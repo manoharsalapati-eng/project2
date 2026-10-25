@@ -1,0 +1,1641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Food Dryer Digital Twin</title>
+<meta name="description" content="Industry 4.0 food-process digital twin of an extrudate conveyor dryer: non-linear plant model, Extended Kalman Filter soft sensor and a constrained nonlinear MPC compared live against PID and open-loop control.">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f2f1ed; --sunken: #efeee9;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --border-strong: rgba(11,11,11,0.18);
+  --ol: #2a78d6; --pid: #eb6834; --mpc: #1baf7a; --est: #6250d6; --truth: #0b0b0b; --meas: #898781;
+  --crit: #d03b3b; --good: #0ca30c; --warn: #fab219; --good-text: #006300; --crit-text: #b42626;
+  --event: rgba(11,11,11,0.05); --forecast: rgba(11,11,11,0.035); --spec: rgba(12,163,12,0.08);
+  --accent: #2a78d6; --accent-ink: #ffffff;
+  --shadow: 0 1px 2px rgba(11,11,11,0.05);
+  --radius: 10px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321; --sunken: #141413;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --border-strong: rgba(255,255,255,0.18);
+    --ol: #3987e5; --pid: #d95926; --mpc: #199e70; --est: #9085e9; --truth: #f0efec; --meas: #898781;
+    --crit: #d03b3b; --good: #0ca30c; --warn: #fab219; --good-text: #0ca30c; --crit-text: #e66767;
+    --event: rgba(255,255,255,0.05); --forecast: rgba(255,255,255,0.035); --spec: rgba(12,163,12,0.09);
+    --accent: #3987e5; --accent-ink: #ffffff;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321; --sunken: #141413;
+  --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --border-strong: rgba(255,255,255,0.18);
+  --ol: #3987e5; --pid: #d95926; --mpc: #199e70; --est: #9085e9; --truth: #f0efec; --meas: #898781;
+  --crit: #d03b3b; --good: #0ca30c; --warn: #fab219; --good-text: #0ca30c; --crit-text: #e66767;
+  --event: rgba(255,255,255,0.05); --forecast: rgba(255,255,255,0.035); --spec: rgba(12,163,12,0.09);
+  --accent: #3987e5; --accent-ink: #ffffff;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--ink); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1440px; margin: 0 auto; padding: 0 16px 48px; }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 22px; line-height: 1.25; }
+h2 { font-size: 16px; }
+h3 { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+p { margin: 0; }
+button, select, input { font: inherit; color: inherit; }
+.muted { color: var(--muted); }
+.ink2 { color: var(--ink-2); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: flex-end; justify-content: space-between; padding: 22px 0 14px; }
+.top .eyebrow { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.top .lede { max-width: 860px; color: var(--ink-2); margin-top: 6px; }
+.run { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* controls */
+.btn { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 8px; padding: 6px 12px; cursor: pointer; line-height: 1.3; min-height: 34px; }
+.btn:hover { background: var(--surface-2); }
+.btn:focus-visible, .seg button:focus-visible, canvas:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.btn.primary:hover { opacity: 0.88; }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: transparent; padding: 6px 12px; cursor: pointer; min-height: 32px; display: inline-flex; align-items: center; gap: 6px; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.seg .key { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+select { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 8px; padding: 5px 8px; min-height: 34px; }
+.toolbar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding: 10px 0; background: var(--page); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.toolbar .lbl { font-size: 12px; color: var(--muted); margin-right: 6px; }
+.toolbar .clock { margin-left: auto; font-size: 13px; color: var(--ink-2); }
+.toolbar .clock b { color: var(--ink); font-weight: 600; }
+
+/* cards & grids */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; min-width: 0; }
+.card > h2 { margin-bottom: 4px; }
+.card .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
+.grid-top { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+.grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+.section-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 26px 0 10px; }
+.section-head p { color: var(--muted); font-size: 12.5px; }
+.charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 1180px) { .charts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-top { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .charts, .grid-2 { grid-template-columns: minmax(0, 1fr); } .toolbar { position: static; } .toolbar .clock { margin-left: 0; width: 100%; } h1 { font-size: 19px; } }
+
+/* schematic */
+.schem svg { width: 100%; height: auto; display: block; }
+.schem text { font-family: var(--font); }
+.schem .t-ink { fill: var(--ink); } .schem .t-2 { fill: var(--ink-2); } .schem .t-m { fill: var(--muted); }
+.schem .stroke { stroke: var(--axis); } .schem .fill-s2 { fill: var(--surface-2); } .schem .fill-sunk { fill: var(--sunken); }
+.schem .ink-stroke { stroke: var(--ink-2); }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); background: var(--surface-2); }
+.badge .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* disturbance panel */
+.dist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin: 8px 0 12px; }
+.dbtn { position: relative; text-align: left; border: 1px solid var(--border-strong); background: var(--surface); border-radius: 8px; padding: 8px 10px 10px; cursor: pointer; overflow: hidden; min-height: 58px; }
+.dbtn:hover { background: var(--surface-2); }
+.dbtn .n { display: block; font-weight: 600; font-size: 13px; }
+.dbtn .d { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.dbtn .bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--ink-2); width: 0; transition: width 0.2s linear; }
+.dbtn.on { border-color: var(--ink-2); }
+.dbtn.on .n::after { content: " · active"; font-weight: 500; color: var(--ink-2); }
+.ctrl-rows { display: grid; gap: 10px; }
+.ctrl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; }
+.ctrl label { font-size: 12.5px; color: var(--ink-2); }
+.ctrl output { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink); text-align: right; min-width: 64px; }
+.ctrl input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--ink-2); }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); margin-bottom: 12px; }
+.checks label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.checks input { accent-color: var(--ink-2); width: 16px; height: 16px; }
+.divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+/* KPI table */
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 600; color: var(--ink-2); font-size: 12px; vertical-align: bottom; }
+th .u { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+td { font-variant-numeric: tabular-nums; }
+tr.focus td { background: var(--surface-2); }
+.lane-key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 8px; }
+.best { display: inline-block; font-size: 10.5px; font-weight: 600; color: var(--good-text); margin-left: 6px; }
+.bad { color: var(--crit-text); font-weight: 600; }
+.summary { margin-top: 10px; color: var(--ink-2); font-size: 13px; }
+.summary b { color: var(--ink); }
+
+/* charts */
+figure.chart { margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 12px 8px; min-width: 0; }
+figure.chart figcaption { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+figure.chart .ct { font-weight: 600; font-size: 13px; }
+figure.chart .cu { color: var(--muted); font-size: 12px; white-space: nowrap; }
+figure.chart .cs { color: var(--muted); font-size: 12px; margin-top: 1px; }
+.legend { list-style: none; margin: 6px 0 4px; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--ink-2); }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.legend .sw { width: 14px; height: 2px; border-radius: 2px; display: inline-block; }
+.legend .sw.dash { background: none !important; border-top: 2px dashed; height: 0; }
+.legend .sw.band { height: 8px; border-radius: 2px; }
+.legend .sw.dots { width: 14px; height: 6px; background-image: radial-gradient(circle, var(--meas) 1.3px, transparent 1.6px); background-size: 5px 6px; }
+.legend .sw.rule { height: 0; border-top: 1.5px solid; }
+.plot { position: relative; }
+.plot canvas { display: block; width: 100%; touch-action: pan-y; border-radius: 4px; }
+.tip { position: absolute; top: 6px; pointer-events: none; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 8px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); min-width: 150px; z-index: 3; }
+.tip .tt { color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+.tip .row { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.tip .row .k { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.tip .row .k i { width: 10px; height: 2px; border-radius: 1px; display: inline-block; }
+.tip .row b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* stats */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.stat { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.stat .l { font-size: 12px; color: var(--ink-2); }
+.stat .v { font-size: 20px; font-weight: 600; margin-top: 2px; }
+.stat .s { font-size: 11.5px; color: var(--muted); }
+@media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.diag { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; font-size: 13px; }
+.diag dt { color: var(--ink-2); }
+.diag dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.status svg { flex: none; }
+.status.ok { color: var(--good-text); } .status.no { color: var(--crit-text); }
+
+/* notes */
+details.notes summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+details.notes .body { margin-top: 10px; display: grid; gap: 12px; color: var(--ink-2); max-width: 980px; }
+details.notes .eq { font-family: var(--mono); font-size: 12.5px; background: var(--sunken); border-radius: 8px; padding: 10px 12px; color: var(--ink); overflow-x: auto; white-space: pre; line-height: 1.6; }
+details.notes h3 { color: var(--ink); font-size: 13.5px; margin-top: 6px; }
+footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Industry 4.0 · Food process digital twin</p>
+      <h1>Extrudate conveyor dryer: EKF soft sensor &amp; constrained MPC</h1>
+      <p class="lede">A twin-screw extruder feeds wet extrudate onto a hot-air belt dryer. Three identical plant twins run side by side under the same disturbances and the same sensor noise, one per control strategy: open-loop recipe, PID and constrained nonlinear MPC. Each twin has its own Extended Kalman Filter that infers the hidden core moisture, product temperature and browning from noisy exhaust-air temperature and humidity.</p>
+    </div>
+    <div class="run" role="group" aria-label="Simulation controls">
+      <button class="btn primary" id="btnRun" type="button" aria-pressed="true">Pause</button>
+      <button class="btn" id="btnStep" type="button" title="Advance one simulated minute">+1 min</button>
+      <button class="btn" id="btnReset" type="button" title="Restart all three twins with a new random seed">Reset</button>
+      <select id="selSpeed" aria-label="Simulation speed">
+        <option value="0.5">0.5 min/s</option>
+        <option value="1">1 min/s</option>
+        <option value="2" selected>2 min/s</option>
+        <option value="5">5 min/s</option>
+        <option value="10">10 min/s</option>
+        <option value="max">Max</option>
+      </select>
+      <button class="btn" id="btnTheme" type="button" aria-label="Toggle light or dark theme">Theme</button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div><span class="lbl">Inspect loop</span>
+      <span class="seg" role="group" aria-label="Loop to inspect" id="segFocus">
+        <button type="button" data-lane="ol" aria-pressed="false"><span class="key" style="background:var(--ol)"></span>Open-loop</button>
+        <button type="button" data-lane="pid" aria-pressed="false"><span class="key" style="background:var(--pid)"></span>PID</button>
+        <button type="button" data-lane="mpc" aria-pressed="true"><span class="key" style="background:var(--mpc)"></span>MPC</button>
+      </span>
+    </div>
+    <div><span class="lbl">Window</span>
+      <span class="seg" role="group" aria-label="Chart time window" id="segWin">
+        <button type="button" data-win="30" aria-pressed="false">30 min</button>
+        <button type="button" data-win="60" aria-pressed="true">60 min</button>
+        <button type="button" data-win="120" aria-pressed="false">2 h</button>
+      </span>
+    </div>
+    <div class="clock num" id="clock" aria-live="off">t = <b>0.0 min</b></div>
+  </div>
+
+  <section class="grid-top">
+    <div class="card schem">
+      <h2>Process twin</h2>
+      <p class="sub" id="schemSub">Live view of the inspected loop. Values marked EKF are soft-sensor estimates; TT and MT are the only exhaust-air instruments.</p>
+      <svg id="schematic" viewBox="0 0 760 330" role="img" aria-labelledby="schemTitle">
+        <title id="schemTitle">Schematic: twin-screw extruder feeding a hot-air conveyor dryer with heater, exhaust fan and exhaust temperature and humidity sensors</title>
+      </svg>
+      <div class="stats" id="focusStats"></div>
+    </div>
+    <div class="card">
+      <h2>Disturbance injection</h2>
+      <p class="sub">Each event hits all three twins at the same moment. Shaded bands on every chart mark when it was active.</p>
+      <div class="dist-grid" id="distGrid"></div>
+      <p class="sub">Try it: under Tuning, set the fixed airflow for open-loop &amp; PID to 3 kg/s, then trigger a compound upset. PID overshoots T<sub>max</sub> and rejects product; MPC holds the limit with no off-spec.</p>
+      <div class="checks">
+        <label><input type="checkbox" id="chkFeed" checked> Random feed-moisture fluctuation</label>
+        <label><input type="checkbox" id="chkWeather" checked> Ambient weather drift</label>
+      </div>
+      <div class="ctrl-rows">
+        <div class="ctrl"><label for="rngNoise">Sensor noise (Gaussian, × nominal σ = 0.4 °C / 1.2 %RH)</label><output id="outNoise">1.0×</output><input type="range" id="rngNoise" min="0" max="3" step="0.1" value="1"></div>
+        <div class="ctrl"><label for="rngMis">Plant–model mismatch (heat transfer, diffusion, kinetics)</label><output id="outMis">5 %</output><input type="range" id="rngMis" min="0" max="15" step="1" value="5"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline">
+      <div><h2>Performance KPIs</h2><p class="sub" style="margin:0">Accumulated on the true plant since the last KPI reset. Lower is better in every column except coverage.</p></div>
+      <button class="btn" id="btnKpiReset" type="button">Reset KPIs</button>
+    </div>
+    <div class="tbl-wrap" style="margin-top:10px">
+      <table id="kpiTable">
+        <thead><tr>
+          <th scope="col">Strategy</th>
+          <th scope="col">IAE moisture<span class="u">% w.b. · min</span></th>
+          <th scope="col">Specific energy<span class="u">kJ / kg product</span></th>
+          <th scope="col">Energy per water<span class="u">kJ / kg H₂O</span></th>
+          <th scope="col">Off-spec rejection<span class="u">% of mass</span></th>
+          <th scope="col">Max product temp.<span class="u">°C</span></th>
+          <th scope="col">Time above T<sub>max</sub><span class="u">min</span></th>
+          <th scope="col">Soft-sensor RMSE<span class="u">X, % w.b.</span></th>
+          <th scope="col">±2σ coverage<span class="u">target ≈ 95 %</span></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="summary" id="kpiSummary"></p>
+  </section>
+
+  <div class="section-head"><h2>Control-loop comparator</h2><p>True plant values for all three strategies. Dashed lines to the right of "now" are the MPC's current optimal plan over its 15-minute horizon.</p></div>
+  <div class="charts" id="cmpCharts"></div>
+
+  <div class="section-head"><h2 id="ekfHead">EKF soft sensor</h2><p id="ekfSub">Hidden states estimated from exhaust-air temperature and RH only. Shaded band = ±2σ from the EKF covariance.</p></div>
+  <div class="charts" id="ekfCharts"></div>
+
+  <div class="section-head"><h2>Tuning &amp; solver</h2><p>Changes apply live to every twin.</p></div>
+  <section class="grid-2">
+    <div class="card">
+      <h2>Targets &amp; controller tuning</h2>
+      <p class="sub">Specification, constraint and tuning parameters.</p>
+      <div class="ctrl-rows" id="tuneRows"></div>
+    </div>
+    <div class="card">
+      <h2>MPC solver diagnostics</h2>
+      <p class="sub">Nonlinear MPC: move-blocked inputs, real-time-iteration SQP with an ADMM (OSQP-style) QP, hard product-temperature limit plus a safety filter on the nonlinear prediction.</p>
+      <dl class="diag" id="mpcDiag"></dl>
+      <div class="divider"></div>
+      <h3 style="margin-bottom:6px">EKF health (inspected loop)</h3>
+      <dl class="diag" id="ekfDiag"></dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline">
+      <div><h2>Telemetry table</h2><p class="sub" style="margin:0" id="telSub">Most recent samples of the inspected loop (the table view of the charts above).</p></div>
+      <button class="btn" id="btnCsv" type="button">Export CSV (all loops)</button>
+    </div>
+    <div class="tbl-wrap" style="margin-top:10px">
+      <table id="telTable"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:16px">
+    <details class="notes">
+      <summary>Model, estimator and controller equations</summary>
+      <div class="body">
+        <h3>1 · Non-linear plant: lumped belt-dryer zone (5 states)</h3>
+        <p>States: core moisture X (kg/kg dry basis), product temperature T<sub>p</sub>, exhaust (chamber) air temperature T<sub>a</sub>, exhaust absolute humidity Y and Maillard browning index B. Inputs: inlet air temperature T<sub>in</sub> and dry-air flow G. Disturbances: raw-feed moisture X<sub>in</sub>, ambient humidity Y<sub>amb</sub> and temperature T<sub>amb</sub>, and throughput F<sub>s</sub>.</p>
+        <div class="eq">a_w(X)  = r/(1+r),  r = (X/A)^(1/n)                     Oswin sorption isotherm (A = 0.12, n = 0.35)
+Y_s     = 0.622·a_w·p_sat(T_p) / (P − a_w·p_sat(T_p))        surface equilibrium humidity
+hA      = hA₀·√(G/G₀),   k_yA = hA / c_pH                     convective transfer, Lewis analogy
+R_d     = k_yA · X/(X+X_D) · (Y_s − Y)                        drying rate with internal-diffusion (falling-rate) factor
+
+M_s·dX/dt               = F_s(X_in − X) − R_d
+M_s(c_ps+c_pw·X)·dT_p/dt = F_s(c_ps+c_pw·X_in)(T_feed − T_p) + hA(T_a − T_p) − R_d·λ(T_p)
+M_a·c_pH·dT_a/dt        = G(c_pa+c_pv·Y_amb)(T_in − T_a) − hA(T_a − T_p) − R_d·c_pv(T_a − T_p) − UA(T_a − T_amb)
+M_a·dY/dt               = G(Y_amb − Y) + R_d
+dB/dt                   = (F_s/M_s)(B_in − B) + k_B·exp[−E_a/R·(1/T_p − 1/T_ref)]·exp[−((a_w − 0.65)/0.25)²]</div>
+        <p>The true plants are integrated with RK4 (1 s steps). Their heat-transfer, diffusion, wall-loss and kinetic parameters differ from the controller's model by the mismatch slider. The air and evaporation modes are stiff (time constants near 1 s), so the MPC predictor uses an L-stable second-order Rosenbrock (ROS2, W-method) integrator.</p>
+        <h3>2 · Extended Kalman Filter soft sensor (6 states)</h3>
+        <div class="eq">z = [X, T_p, T_a, Y, B, X_in]ᵀ          X_in is an unmeasured random-walk disturbance state
+y = [T_a,  RH(T_a, Y)]ᵀ + v,   v ~ N(0, diag(0.4², 1.2²))
+Predict:  ẑ⁻ = f_d(ẑ, u, d̂),  F = ∂f_d/∂z (finite differences),  P⁻ = F P Fᵀ + Q
+Update:   K = P⁻Hᵀ(HP⁻Hᵀ + R)⁻¹,  ẑ = ẑ⁻ + K(y − h(ẑ⁻)),  P = (I−KH)P⁻(I−KH)ᵀ + KRKᵀ   (Joseph form)</div>
+        <p>Browning does not affect either measurement, so it is not observable. It is detectable: its washout dynamics are stable, and the EKF propagates its estimate and covariance from the estimated T<sub>p</sub> and X. Q includes a model-error allowance so the ±2σ bands stay close to 95 % consistent at the default 5 % mismatch.</p>
+        <h3>3 · Controllers</h3>
+        <div class="eq">Open-loop : T_in, G fixed at the steady-state recipe for the set-point (fixed-airflow slider)
+PID       : velocity form on the EKF moisture estimate, e = X̂ − X_sp (reverse acting),
+            Δu = K_p[Δe + (T_s/T_i)e + (T_d/T_s)Δ²X̂]  (derivative on PV, clamped, slew-limited), G fixed
+MPC       : min Σ_k  w_X(X_k − X_sp)² + w_E·(Q_heater,k + P_fan,k)/P_ref + w_B·max(0, B_k − B_max + 1)²  + w_Δu·Σ‖Δz‖²
+            s.t.  T_p,k ≤ T_max − δ − 2σ_Tp   (hard, every step of the 15-min horizon)
+                  60 ≤ T_in ≤ 200 °C,  2 ≤ G ≤ 8 kg/s,  slew limits
+            horizon 60 × 15 s, 5 move blocks [2,4,8,16,30], RTI-SQP (2 iterations) + ADMM QP,
+            then a bisection safety filter that lowers T_in until the nonlinear prediction is feasible.</div>
+        <h3>4 · KPIs</h3>
+        <p>IAE = ∫|X<sub>w.b.</sub> − X<sub>sp</sub>| dt on the true outlet moisture. Specific energy = ∫(heater + fan power) dt ÷ product mass discharged. Off-spec rejection = the share of discharged mass that was outside the moisture band, over the browning limit, or above T<sub>max</sub> (thermally degraded). Soft-sensor RMSE and ±2σ coverage compare the EKF moisture estimate with the true plant, skipping the first 5 minutes of start-up transient.</p>
+      </div>
+    </details>
+  </section>
+  <footer>Pure client-side JavaScript, no libraries: physics, EKF, PID and MPC all run in this page. Simulated time advances in 5 s control/estimation steps; the MPC re-plans every 15 s.</footer>
+</div>
+<script>
+/* ==== ENGINE START ==== */
+"use strict";
+// ---------- Psychrometrics & helpers ----------
+const P_ATM = 101325, CP_A = 1.006, CP_V = 1.88, CP_W = 4.18, CP_S = 1.6, LAM0 = 2501, RGAS = 8.314;
+const psat = T => 610.94 * Math.exp(17.625 * T / (T + 243.04));
+const dlnPsat = T => 17.625 * 243.04 / ((T + 243.04) * (T + 243.04));
+const humidityFromRH = (T, RH) => { const pv = RH * psat(T); return 0.622 * pv / (P_ATM - pv); };
+const rhFromHumidity = (T, Y) => (Y * P_ATM / (0.622 + Y)) / psat(T);
+const toWB = X => 100 * X / (1 + X);
+const fromWB = w => (w / 100) / (1 - w / 100);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+// ---------- Nominal process model parameters (lumped belt-dryer zone) ----------
+const NOMINAL = {
+  Fs: 0.25,      // dry-solids throughput from extruder [kg/s]
+  Ms: 150,       // dry-solids holdup on belt [kg]  (tau = 600 s)
+  Ma: 120,       // dry-air holdup in drying chamber [kg]
+  Tfeed: 45,     // extrudate temperature entering dryer [degC]
+  hA0: 22, G0: 5, hExp: 0.5, // convective conductance hA = hA0 (G/G0)^0.5 [kW/K]
+  XD: 0.05,      // internal-diffusion (falling-rate) moisture constant [kg/kg db]
+  UA: 0.25,      // wall heat loss [kW/K]
+  oswA: 0.12, oswN: 0.35,    // Oswin sorption isotherm
+  kB: 0.6, EaB: 110000, TrefB: 80, awPk: 0.65, awW: 0.25, Bin: 10, // Maillard browning kinetics
+  fan: 0.12,     // fan power coefficient [kW/(kg/s)^3]
+  eta: 0.92,     // heater efficiency
+};
+const LIMITS = { TinMin: 60, TinMax: 200, Gmin: 2, Gmax: 8, dTin: 5, dG: 0.25 }; // per 5 s step slew limits
+const TS = 5;  // control / estimator sample time [s]
+
+function wateractivity(X, p) { const r = Math.pow(Math.max(X, 1e-4) / p.oswA, 1 / p.oswN); return r / (1 + r); }
+
+// x = [X, Tp, Ta, Y, B], u = [Tin, G], d = {Xin, Yamb, Tamb, Fs}; returns drying rate Rd [kg/s]
+function rates(x, u, d, p, out) {
+  const X = Math.max(x[0], 1e-3), Tp = x[1], Ta = x[2], Y = Math.max(x[3], 1e-5), B = x[4];
+  const Tin = u[0], G = u[1];
+  const hA = p.hA0 * Math.sqrt(G / p.G0);
+  const cpH = CP_A + CP_V * Y;
+  const kyA = hA / cpH;                         // Lewis analogy
+  const a = wateractivity(X, p);
+  const pv = a * psat(Tp);
+  const Ys = 0.622 * pv / Math.max(P_ATM - pv, 1000);
+  const Rd = kyA * (X / (X + p.XD)) * (Ys - Y);
+  const lam = LAM0 - (CP_W - CP_V) * Tp;
+  const Fs = d.Fs;
+  out[0] = (Fs * (d.Xin - X) - Rd) / p.Ms;
+  out[1] = (Fs * (CP_S + CP_W * d.Xin) * (p.Tfeed - Tp) + hA * (Ta - Tp) - Rd * lam) / (p.Ms * (CP_S + CP_W * X));
+  out[2] = (G * (CP_A + CP_V * d.Yamb) * (Tin - Ta) - hA * (Ta - Tp) - Rd * CP_V * (Ta - Tp) - p.UA * (Ta - d.Tamb)) / (p.Ma * cpH);
+  out[3] = (G * (d.Yamb - Y) + Rd) / p.Ma;
+  const kT = p.kB * Math.exp(-p.EaB / RGAS * (1 / (Tp + 273.15) - 1 / (p.TrefB + 273.15)));
+  const g = Math.exp(-Math.pow((a - p.awPk) / p.awW, 2));
+  out[4] = (Fs / p.Ms) * (p.Bin - B) + kT * g;
+  return Rd;
+}
+
+const _k1 = new Float64Array(5), _k2 = new Float64Array(5), _k3 = new Float64Array(5), _k4 = new Float64Array(5), _t = new Float64Array(5);
+function rk4(x, u, d, p, h, n) {
+  const y = x.slice(0, 5);
+  for (let s = 0; s < n; s++) {
+    rates(y, u, d, p, _k1);
+    for (let i = 0; i < 5; i++) _t[i] = y[i] + 0.5 * h * _k1[i];
+    rates(_t, u, d, p, _k2);
+    for (let i = 0; i < 5; i++) _t[i] = y[i] + 0.5 * h * _k2[i];
+    rates(_t, u, d, p, _k3);
+    for (let i = 0; i < 5; i++) _t[i] = y[i] + h * _k3[i];
+    rates(_t, u, d, p, _k4);
+    for (let i = 0; i < 5; i++) y[i] += h / 6 * (_k1[i] + 2 * _k2[i] + 2 * _k3[i] + _k4[i]);
+    y[0] = Math.max(y[0], 1e-3); y[3] = Math.max(y[3], 1e-5); y[4] = Math.max(y[4], 0);
+  }
+  return y;
+}
+
+// ---------- L-stable 2nd-order Rosenbrock (ROS2) integrator for the stiff air/evaporation modes ----------
+const ROS_G = 1 + 1 / Math.SQRT2, JAC_EPS = [1e-5, 1e-3, 1e-3, 1e-6, 1e-3];
+const _f0 = new Float64Array(5), _f1 = new Float64Array(5), _fp = new Float64Array(5), _y1 = new Float64Array(5), _M = [0, 1, 2, 3, 4].map(() => new Float64Array(5)), _piv = new Int32Array(5);
+function luFactor(M, piv) {
+  for (let k = 0; k < 5; k++) {
+    let m = k, mv = Math.abs(M[k][k]);
+    for (let i = k + 1; i < 5; i++) if (Math.abs(M[i][k]) > mv) { mv = Math.abs(M[i][k]); m = i; }
+    piv[k] = m; if (m !== k) { const t = M[k]; M[k] = M[m]; M[m] = t; }
+    const d = M[k][k] || 1e-12;
+    for (let i = k + 1; i < 5; i++) { const l = (M[i][k] /= d); if (l !== 0) for (let j = k + 1; j < 5; j++) M[i][j] -= l * M[k][j]; }
+  }
+}
+function luSolve(M, piv, b, out) {
+  for (let i = 0; i < 5; i++) out[i] = b[i];
+  for (let k = 0; k < 5; k++) { const m = piv[k]; if (m !== k) { const t = out[k]; out[k] = out[m]; out[m] = t; } }
+  for (let k = 0; k < 5; k++) for (let i = k + 1; i < 5; i++) out[i] -= M[i][k] * out[k];
+  for (let i = 4; i >= 0; i--) { let s = out[i]; for (let j = i + 1; j < 5; j++) s -= M[i][j] * out[j]; out[i] = s / M[i][i]; }
+  return out;
+}
+const _k1r = new Float64Array(5), _k2r = new Float64Array(5), _rhs = new Float64Array(5);
+function ros2(x, u, d, p, h, n) {
+  const y = x.slice(0, 5);
+  // W-method: ROS2 keeps 2nd order with an approximate Jacobian, so W = I - g h J is factored once per call
+  for (let s = 0; s < n; s++) {
+    rates(y, u, d, p, _f0);
+    if (s === 0) {
+      for (let j = 0; j < 5; j++) {
+        const e = JAC_EPS[j], yj = y[j]; y[j] = yj + e; rates(y, u, d, p, _fp); y[j] = yj;
+        for (let i = 0; i < 5; i++) _M[i][j] = (i === j ? 1 : 0) - ROS_G * h * (_fp[i] - _f0[i]) / e;
+      }
+      luFactor(_M, _piv);
+    }
+    luSolve(_M, _piv, _f0, _k1r);
+    for (let i = 0; i < 5; i++) _y1[i] = y[i] + h * _k1r[i];
+    rates(_y1, u, d, p, _f1);
+    for (let i = 0; i < 5; i++) _rhs[i] = _f1[i] - 2 * _k1r[i];
+    luSolve(_M, _piv, _rhs, _k2r);
+    for (let i = 0; i < 5; i++) y[i] += 1.5 * h * _k1r[i] + 0.5 * h * _k2r[i];
+    y[0] = Math.max(y[0], 1e-3); y[3] = Math.max(y[3], 1e-5); y[4] = Math.max(y[4], 0);
+  }
+  return y;
+}
+
+function power(u, d, p) {
+  const Q = u[1] * (CP_A + CP_V * d.Yamb) * (u[0] - d.Tamb) / p.eta;
+  const F = p.fan * u[1] * u[1] * u[1];
+  return { Q, F, total: Q + F };
+}
+
+// ---------- Random numbers (seeded, so all three lanes see identical disturbances & noise) ----------
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function makeGauss(rand) {
+  let spare = null;
+  return () => {
+    if (spare !== null) { const s = spare; spare = null; return s; }
+    let u, v, s; do { u = rand() * 2 - 1; v = rand() * 2 - 1; s = u * u + v * v; } while (s >= 1 || s === 0);
+    const m = Math.sqrt(-2 * Math.log(s) / s); spare = v * m; return u * m;
+  };
+}
+
+// ---------- Shared disturbance generator ----------
+const EVENT_TYPES = {
+  wet:    { label: 'Wet-feed slug',          dur: 720, mag: 0.07 },   // +kg/kg db feed moisture
+  humid:  { label: 'Ambient humidity spike', dur: 900, mag: 0.009 },  // +kg/kg ambient humidity, +3 degC
+  surge:  { label: 'Throughput surge',       dur: 600, mag: 0.25 },   // +25 % dry-solids rate
+  cold:   { label: 'Cold snap',              dur: 900, mag: -12 },    // ambient degC
+  noise:  { label: 'Sensor noise burst',     dur: 300, mag: 4 },      // noise x (1 + mag)
+};
+class Disturbances {
+  constructor(seed) {
+    this.rand = mulberry32(seed); this.gauss = makeGauss(this.rand);
+    this.ouX = 0; this.ouY = 0; this.ouT = 0;
+    this.events = [];
+    this.filt = { wet: 0, humid: 0, surge: 0, cold: 0, noise: 0 };
+    this.stochFeed = true; this.weather = true; this.noiseScale = 1;
+  }
+  inject(type, t) { this.events.push({ type, start: t, end: t + EVENT_TYPES[type].dur }); }
+  active(type, t) { return this.events.some(e => e.type === type && t >= e.start && t < e.end); }
+  step(t) {
+    const g = this.gauss, a = TS;
+    // Ornstein-Uhlenbeck fluctuations (draws always consumed so toggles don't desync the random stream)
+    const nX = g(), nY = g(), nT = g();
+    this.ouX += -this.ouX * a / 400 + 0.012 * Math.sqrt(2 * a / 400) * nX;
+    this.ouY += -this.ouY * a / 900 + 0.0008 * Math.sqrt(2 * a / 900) * nY;
+    this.ouT += -this.ouT * a / 1200 + 0.8 * Math.sqrt(2 * a / 1200) * nT;
+    for (const k in this.filt) {
+      const target = this.active(k, t) ? EVENT_TYPES[k].mag : 0;
+      const tau = k === 'noise' ? 1 : 40;
+      this.filt[k] += (target - this.filt[k]) * Math.min(1, a / tau);
+    }
+    const Tamb = 20 + (this.weather ? this.ouT : 0) + this.filt.cold + 3 * this.filt.humid / 0.009;
+    const Yamb = Math.max(0.002, 0.0080 + (this.weather ? this.ouY : 0) + this.filt.humid);
+    const d = {
+      Xin: 0.40 + (this.stochFeed ? this.ouX : 0) + this.filt.wet,
+      Yamb, Tamb,
+      RHamb: Math.min(1, rhFromHumidity(Tamb, Yamb)),
+      Fs: NOMINAL.Fs * (1 + this.filt.surge),
+      noiseMult: this.noiseScale * (1 + this.filt.noise),
+      // sensor noise draws (shared by all lanes = common random numbers)
+      nTa: g(), nRH: g(), nTamb: g(), nRHamb: g(),
+    };
+    this.events = this.events.filter(e => t < e.end + 3600 * 6);
+    return d;
+  }
+}
+const SENSOR = { sTa: 0.4, sRH: 1.2, sTamb: 0.15, sRHamb: 0.8 };
+
+// ---------- small dense linear algebra ----------
+function matMul(A, B) { const n = A.length, m = B[0].length, k = B.length, C = []; for (let i = 0; i < n; i++) { const r = new Array(m).fill(0); for (let l = 0; l < k; l++) { const a = A[i][l]; if (a !== 0) for (let j = 0; j < m; j++) r[j] += a * B[l][j]; } C.push(r); } return C; }
+function transpose(A) { return A[0].map((_, j) => A.map(r => r[j])); }
+function cholesky(A) { const n = A.length, L = A.map(() => new Array(n).fill(0)); for (let i = 0; i < n; i++) for (let j = 0; j <= i; j++) { let s = A[i][j]; for (let k = 0; k < j; k++) s -= L[i][k] * L[j][k]; if (i === j) L[i][i] = Math.sqrt(Math.max(s, 1e-12)); else L[i][j] = s / L[j][j]; } return L; }
+function cholSolve(L, b) { const n = L.length, y = new Array(n), x = new Array(n); for (let i = 0; i < n; i++) { let s = b[i]; for (let k = 0; k < i; k++) s -= L[i][k] * y[k]; y[i] = s / L[i][i]; } for (let i = n - 1; i >= 0; i--) { let s = y[i]; for (let k = i + 1; k < n; k++) s -= L[k][i] * x[k]; x[i] = s / L[i][i]; } return x; }
+
+// ---------- Extended Kalman Filter soft sensor ----------
+// augmented state  z = [X, Tp, Ta, Y, B, Xin]   (Xin = unmeasured raw-feed moisture, random walk)
+// measurements     y = [Ta (degC), RH_exhaust (%)]
+const EKF_NX = 6;
+class EKF {
+  constructor(p) {
+    this.p = p;
+    this.x = [0.14, 50, 58, 0.020, 18, 0.34];   // deliberately wrong initial guess
+    this.P = diag([0.03 ** 2, 4 ** 2, 2 ** 2, 0.004 ** 2, 6 ** 2, 0.05 ** 2]);
+    // process noise includes a model-error allowance so the 2-sigma bands stay ~95 % consistent under plant-model mismatch
+    this.Q = diag([(8e-4) ** 2, 0.2 ** 2, 0.25 ** 2, (6e-5) ** 2, 0.1 ** 2, (2.5e-3) ** 2]);
+    this.R = diag([SENSOR.sTa ** 2, SENSOR.sRH ** 2]);
+    this.innov = [0, 0]; this.nis = 0;
+  }
+  f(z, u, d) {
+    const y = rk4(z, u, { Xin: z[5], Yamb: d.Yamb, Tamb: d.Tamb, Fs: d.Fs }, this.p, TS / 2, 2);
+    y.push(z[5]); return y;
+  }
+  predict(u, d) {
+    const x0 = this.x, fx = this.f(x0, u, d), F = [];
+    const eps = [1e-4, 0.01, 0.01, 1e-5, 0.01, 1e-4];
+    for (let j = 0; j < EKF_NX; j++) {
+      const xp = x0.slice(); xp[j] += eps[j];
+      const fp = this.f(xp, u, d);
+      for (let i = 0; i < EKF_NX; i++) { if (!F[i]) F[i] = new Array(EKF_NX); F[i][j] = (fp[i] - fx[i]) / eps[j]; }
+    }
+    const FP = matMul(F, this.P), Pn = matMul(FP, transpose(F));
+    for (let i = 0; i < EKF_NX; i++) Pn[i][i] += this.Q[i][i];
+    this.x = fx; this.P = Pn;
+  }
+  update(zm) {
+    const x = this.x, Ta = x[2], Y = Math.max(x[3], 1e-5);
+    const rh = 100 * rhFromHumidity(Ta, Y);
+    const h = [Ta, rh];
+    const H = [[0, 0, 1, 0, 0, 0], [0, 0, -rh * dlnPsat(Ta), 100 * P_ATM * 0.622 / ((0.622 + Y) ** 2 * psat(Ta)), 0, 0]];
+    const PHt = matMul(this.P, transpose(H));
+    const S = matMul(H, PHt); S[0][0] += this.R[0][0]; S[1][1] += this.R[1][1];
+    const det = S[0][0] * S[1][1] - S[0][1] * S[1][0];
+    const Si = [[S[1][1] / det, -S[0][1] / det], [-S[1][0] / det, S[0][0] / det]];
+    const K = matMul(PHt, Si);
+    const r = [zm[0] - h[0], zm[1] - h[1]];
+    this.innov = r;
+    this.nis = r[0] * (Si[0][0] * r[0] + Si[0][1] * r[1]) + r[1] * (Si[1][0] * r[0] + Si[1][1] * r[1]);
+    for (let i = 0; i < EKF_NX; i++) x[i] += K[i][0] * r[0] + K[i][1] * r[1];
+    // Joseph form: P = (I-KH) P (I-KH)' + K R K'
+    const IKH = []; for (let i = 0; i < EKF_NX; i++) { IKH.push(new Array(EKF_NX)); for (let j = 0; j < EKF_NX; j++) IKH[i][j] = (i === j ? 1 : 0) - (K[i][0] * H[0][j] + K[i][1] * H[1][j]); }
+    const Pn = matMul(matMul(IKH, this.P), transpose(IKH));
+    for (let i = 0; i < EKF_NX; i++) for (let j = 0; j < EKF_NX; j++) Pn[i][j] += K[i][0] * this.R[0][0] * K[j][0] + K[i][1] * this.R[1][1] * K[j][1];
+    for (let i = 0; i < EKF_NX; i++) for (let j = 0; j < i; j++) { const m = 0.5 * (Pn[i][j] + Pn[j][i]); Pn[i][j] = Pn[j][i] = m; }
+    this.P = Pn;
+    x[0] = clamp(x[0], 0.01, 1.5); x[3] = clamp(x[3], 1e-4, 0.3); x[4] = Math.max(0, x[4]); x[5] = clamp(x[5], 0.05, 1.5);
+  }
+  sd(i) { return Math.sqrt(Math.max(this.P[i][i], 0)); }
+}
+function diag(v) { return v.map((a, i) => v.map((_, j) => i === j ? a : 0)); }
+
+// ---------- PID (velocity form, derivative on PV, inherent anti-windup) ----------
+class PID {
+  constructor() { this.Kp = 6.0; this.Ti = 420; this.Td = 30; this.e1 = null; this.pv1 = null; this.pv2 = null; }
+  step(pv, sp, u) {
+    const e = pv - sp; // reverse-acting: too wet -> more heat
+    if (this.e1 === null) { this.e1 = e; this.pv1 = pv; this.pv2 = pv; }
+    const du = this.Kp * ((e - this.e1) + TS / this.Ti * e + this.Td / TS * (pv - 2 * this.pv1 + this.pv2));
+    this.pv2 = this.pv1; this.pv1 = pv; this.e1 = e;
+    return u + du;
+  }
+}
+
+/* ==== ENGINE END ==== */
+
+/* ==== MPC START ==== */
+// ---------- Nonlinear MPC: real-time-iteration SQP + ADMM (OSQP-style) QP solver ----------
+// Decision variables: move-blocked, normalised inputs z in [0,1]^(2*NB)  (Tin, G per block)
+const MPC_DT = 15;                       // MPC sample time [s]
+const MPC_BLOCKS = [2, 4, 8, 16, 30];    // move-blocking lengths (sum = horizon steps)
+const MPC_N = MPC_BLOCKS.reduce((a, b) => a + b, 0);   // 60 steps = 15 min
+const MPC_NB = MPC_BLOCKS.length, MPC_NZ = 2 * MPC_NB;
+const BLOCK_OF = []; MPC_BLOCKS.forEach((len, j) => { for (let i = 0; i < len; i++) BLOCK_OF.push(j); });
+const zToU = (zT, zG) => [LIMITS.TinMin + zT * (LIMITS.TinMax - LIMITS.TinMin), LIMITS.Gmin + zG * (LIMITS.Gmax - LIMITS.Gmin)];
+const uToZ = u => [(u[0] - LIMITS.TinMin) / (LIMITS.TinMax - LIMITS.TinMin), (u[1] - LIMITS.Gmin) / (LIMITS.Gmax - LIMITS.Gmin)];
+
+const BLOCK_START = MPC_BLOCKS.map((_, j) => MPC_BLOCKS.slice(0, j).reduce((a, b) => a + b, 0));
+// Nonlinear prediction with the stiff-stable ROS2 integrator. With `base`, steps before kStart are reused
+// (a perturbation of block j cannot change the trajectory before that block starts).
+function mpcPredict(x0, z, d, p, kStart, base) {
+  const n = MPC_N, Xw = new Float64Array(n), Tp = new Float64Array(n), B = new Float64Array(n), Pw = new Float64Array(n), S = new Float64Array(5 * n);
+  let x, k0 = 0;
+  if (base && kStart > 0) {
+    k0 = kStart; Xw.set(base.Xw.subarray(0, k0)); Tp.set(base.Tp.subarray(0, k0)); B.set(base.B.subarray(0, k0)); Pw.set(base.Pw.subarray(0, k0)); S.set(base.S.subarray(0, 5 * k0));
+    x = Array.from(base.S.subarray(5 * (k0 - 1), 5 * k0));
+  } else x = x0.slice(0, 5);
+  let ok = true;
+  for (let k = k0; k < n; k++) {
+    const j = BLOCK_OF[k], u = zToU(z[2 * j], z[2 * j + 1]);
+    x = ros2(x, u, d, p, MPC_DT / 2, 2);
+    if (!(x[1] === x[1]) || !(x[0] === x[0])) { ok = false; x = x0.slice(0, 5); }
+    Xw[k] = toWB(x[0]); Tp[k] = x[1]; B[k] = x[4]; Pw[k] = power(u, d, p).total;
+    for (let i = 0; i < 5; i++) S[5 * k + i] = x[i];
+  }
+  return { Xw, Tp, B, Pw, S, ok };
+}
+
+// min 1/2 x'Hx + q'x  s.t.  l <= A x <= u     (dense ADMM, OSQP iteration)
+function admmQP(H, q, A, l, u, iters) {
+  const n = q.length, m = A.length, sigma = 1e-6, alpha = 1.6;
+  const rho = new Array(m).fill(0.1);
+  const K = H.map((r, i) => r.map((v, j) => v + (i === j ? sigma : 0)));
+  for (let r = 0; r < m; r++) { const a = A[r]; for (let i = 0; i < n; i++) if (a[i] !== 0) for (let j = 0; j < n; j++) K[i][j] += rho[r] * a[i] * a[j]; }
+  const L = cholesky(K);
+  let x = new Array(n).fill(0), z = new Array(m).fill(0), y = new Array(m).fill(0);
+  for (let r = 0; r < m; r++) z[r] = clamp(0, l[r], u[r]);
+  const rhs = new Array(n);
+  for (let it = 0; it < iters; it++) {
+    for (let i = 0; i < n; i++) rhs[i] = sigma * x[i] - q[i];
+    for (let r = 0; r < m; r++) { const c = rho[r] * z[r] - y[r], a = A[r]; for (let i = 0; i < n; i++) rhs[i] += a[i] * c; }
+    const xt = cholSolve(L, rhs);
+    let prim = 0;
+    for (let r = 0; r < m; r++) {
+      const a = A[r]; let zt = 0; for (let i = 0; i < n; i++) zt += a[i] * xt[i];
+      const zr = alpha * zt + (1 - alpha) * z[r];
+      const zn = clamp(zr + y[r] / rho[r], l[r], u[r]);
+      y[r] += rho[r] * (zr - zn);
+      prim = Math.max(prim, Math.abs(zt - zn));
+      z[r] = zn;
+    }
+    for (let i = 0; i < n; i++) x[i] = alpha * xt[i] + (1 - alpha) * x[i];
+    if (prim < 2e-4 && it > 15) break;
+  }
+  return x;
+}
+
+class MPC {
+  constructor(p) {
+    this.p = p;
+    this.z = null; this.plan = null; this.diag = { ms: 0, iters: 0, active: 0, Tlim: 0, maxTp: 0, J: 0, filtered: false };
+    this.wX = 6;      // moisture tracking weight  [1/(%wb)^2]
+    this.wE = 1.0;    // energy weight (per Pref)
+    this.wDu = 2.0;   // move suppression
+    this.wB = 0.5;    // browning soft limit
+    this.Pref = 400;  // kW
+  }
+  cost(pr, z, zPrev, sp, Bmax) {
+    let J = 0; const N = MPC_N;
+    for (let k = 0; k < N; k++) {
+      const e = pr.Xw[k] - sp; J += this.wX * e * e / N + this.wE * pr.Pw[k] / this.Pref / N;
+      const b = pr.B[k] - (Bmax - 1); if (b > 0) J += this.wB * b * b / N;
+    }
+    for (let j = 0; j < MPC_NB; j++) for (let v = 0; v < 2; v++) { const dz = z[2 * j + v] - (j === 0 ? zPrev[v] : z[2 * (j - 1) + v]); J += this.wDu * dz * dz; }
+    return J;
+  }
+  solve(x0, d, uApplied, cfg) {
+    const t0 = (typeof performance !== 'undefined' ? performance : Date).now();
+    const p = this.p, N = MPC_N, NZ = MPC_NZ, sp = cfg.sp, Bmax = cfg.Bmax;
+    const zPrev = uToZ(uApplied);
+    // warm start: shift previous plan by one MPC step
+    let z = this.z ? this.z.slice() : [].concat(...MPC_BLOCKS.map(() => zPrev));
+    const Tlim = cfg.Tmax - cfg.backoff - cfg.zSigma * cfg.sigmaTp;
+    // feasibility relaxation: lowest achievable Tp trajectory (minimum heat, current airflow)
+    const zCool = []; for (let j = 0; j < MPC_NB; j++) zCool.push(0, zPrev[1]);
+    const cool = mpcPredict(x0, zCool, d, p);
+    const lim = new Float64Array(N); for (let k = 0; k < N; k++) lim[k] = Math.max(Tlim, cool.Tp[k] + 0.3);
+    let iters = 0, active = 0;
+    for (let sqp = 0; sqp < 2; sqp++) {
+      iters++;
+      const base = mpcPredict(x0, z, d, p);
+      // finite-difference sensitivities of moisture, Tp, browning w.r.t. each decision variable
+      const JX = [], JT = [], JB = [], h = 0.01;
+      for (let i = 0; i < NZ; i++) {
+        const zp = z.slice(); const hh = zp[i] + h > 1 ? -h : h; zp[i] += hh;
+        const pr = mpcPredict(x0, zp, d, p, BLOCK_START[i >> 1], base);
+        JX.push(Array.from(pr.Xw, (v, k) => (v - base.Xw[k]) / hh));
+        JT.push(Array.from(pr.Tp, (v, k) => (v - base.Tp[k]) / hh));
+        JB.push(Array.from(pr.B, (v, k) => (v - base.B[k]) / hh));
+      }
+      // Gauss-Newton Hessian & gradient
+      const H = []; for (let i = 0; i < NZ; i++) H.push(new Array(NZ).fill(0));
+      const g = new Array(NZ).fill(0);
+      for (let k = 0; k < N; k++) {
+        const e = base.Xw[k] - sp, wx = this.wX / N;
+        const bAct = base.B[k] - (Bmax - 1) > -0.5, eb = Math.max(0, base.B[k] - (Bmax - 1)), wb = this.wB / N;
+        for (let i = 0; i < NZ; i++) {
+          g[i] += wx * JX[i][k] * e + (bAct ? wb * JB[i][k] * eb : 0);
+          for (let j = 0; j <= i; j++) H[i][j] += wx * JX[i][k] * JX[j][k] + (bAct ? wb * JB[i][k] * JB[j][k] : 0);
+        }
+      }
+      // exact energy gradient (power depends only on its own block input)
+      const span = [LIMITS.TinMax - LIMITS.TinMin, LIMITS.Gmax - LIMITS.Gmin];
+      for (let j = 0; j < MPC_NB; j++) {
+        const u = zToU(z[2 * j], z[2 * j + 1]), c = (1.006 + 1.88 * d.Yamb) / p.eta, w = this.wE * MPC_BLOCKS[j] / N / this.Pref;
+        g[2 * j] += w * u[1] * c * span[0];
+        g[2 * j + 1] += w * (c * (u[0] - d.Tamb) + 3 * p.fan * u[1] * u[1]) * span[1];
+      }
+      // move suppression (exact quadratic)
+      for (let j = 0; j < MPC_NB; j++) for (let v = 0; v < 2; v++) {
+        const i = 2 * j + v, ip = 2 * (j - 1) + v;
+        const dz = z[i] - (j === 0 ? zPrev[v] : z[ip]);
+        H[i][i] += this.wDu; g[i] += this.wDu * dz;
+        if (j > 0) { H[ip][ip] += this.wDu; H[i][ip] -= this.wDu; g[ip] -= this.wDu * dz; }
+      }
+      for (let i = 0; i < NZ; i++) { H[i][i] += 1e-3; for (let j = 0; j < i; j++) H[j][i] = H[i][j]; }
+      // constraints: trust-region box + linearised hard Tp limit at every horizon step
+      const A = [], lo = [], up = [], TR = 0.25;
+      for (let i = 0; i < NZ; i++) { const r = new Array(NZ).fill(0); r[i] = 1; A.push(r); lo.push(Math.max(-z[i], -TR)); up.push(Math.min(1 - z[i], TR)); }
+      for (let k = 0; k < N; k += (k < 8 ? 1 : 2)) { const r = new Array(NZ); for (let i = 0; i < NZ; i++) r[i] = JT[i][k] / 5; A.push(r); lo.push(-1e9); up.push((lim[k] - base.Tp[k]) / 5); }
+      const dz = admmQP(H, g, A, lo, up, 200);
+      // backtracking on a merit function (cost + exact penalty on Tp violation)
+      const merit = (pr, zz) => { let v = 0; for (let k = 0; k < N; k++) v += Math.max(0, pr.Tp[k] - lim[k]); return this.cost(pr, zz, zPrev, sp, Bmax) + 5 * v; };
+      const m0 = merit(base, z); let step = 1, accepted = false;
+      for (let ls = 0; ls < 4; ls++) {
+        const zn = z.map((v, i) => clamp(v + step * dz[i], 0, 1));
+        const pr = mpcPredict(x0, zn, d, p);
+        if (merit(pr, zn) <= m0 + 1e-9) { z = zn; accepted = true; break; }
+        step *= 0.5;
+      }
+      if (!accepted) break;
+    }
+    // safety filter: guarantee the nonlinear prediction honours the hard Tp limit
+    let pr = mpcPredict(x0, z, d, p), filtered = false;
+    const viol = q => { let v = -1e9; for (let k = 0; k < N; k++) v = Math.max(v, q.Tp[k] - lim[k]); return v; };
+    if (viol(pr) > 0.02) {
+      filtered = true; let a = 0, b = 1; const zt = z.slice();
+      const scaled = s => z.map((v, i) => (i % 2 === 0) ? v * (1 - s) : v);
+      for (let it = 0; it < 12; it++) { const m = 0.5 * (a + b); if (viol(mpcPredict(x0, scaled(m), d, p)) > 0) a = m; else b = m; }
+      z = scaled(b); pr = mpcPredict(x0, z, d, p);
+    }
+    for (let k = 0; k < N; k++) if (pr.Tp[k] > lim[k] - 0.15) active++;
+    this.z = z;
+    // shift for the next warm start: first block shortens by one MPC step
+    const t1 = (typeof performance !== 'undefined' ? performance : Date).now();
+    let maxTp = -1e9; for (let k = 0; k < N; k++) maxTp = Math.max(maxTp, pr.Tp[k]);
+    this.plan = { Xw: pr.Xw, Tp: pr.Tp, B: pr.B, Pw: pr.Pw, U: BLOCK_OF.map(j => zToU(z[2 * j], z[2 * j + 1])), lim };
+    this.diag = { ms: t1 - t0, iters, active, Tlim, maxTp, J: this.cost(pr, z, zPrev, sp, Bmax), filtered };
+    return zToU(z[0], z[1]);
+  }
+}
+/* ==== MPC END ==== */
+
+/* ==== SIM START ==== */
+// ---------- One "lane" = plant twin + EKF soft sensor + controller + KPIs ----------
+const NOMINAL_U = [96, 5];
+const NOMINAL_X = [0.0989, 49.63, 57.97, 0.0231, 12.9];
+const NOMINAL_D = { Xin: 0.40, Yamb: 0.0080, Tamb: 20, Fs: NOMINAL.Fs };
+function steadyState(u, p) { let x = NOMINAL_X.slice(); for (let i = 0; i < 80; i++) x = ros2(x, u, NOMINAL_D, p, 60, 1); return x; }
+// design ("recipe") inlet temperature that hits the moisture set-point at a given fixed airflow
+function recipeTin(G, spWB) {
+  let lo = LIMITS.TinMin, hi = LIMITS.TinMax;
+  for (let i = 0; i < 26; i++) { const m = 0.5 * (lo + hi); if (toWB(steadyState([m, G], NOMINAL)[0]) > spWB) lo = m; else hi = m; }
+  return 0.5 * (lo + hi);
+}
+function plantParams(mis) {
+  return Object.assign({}, NOMINAL, { hA0: NOMINAL.hA0 * (1 - mis), kB: NOMINAL.kB * (1 + 2 * mis), XD: NOMINAL.XD * (1 + 1.5 * mis), UA: NOMINAL.UA * (1 + 2 * mis) });
+}
+const HIST_KEYS = ['t', 'Xw', 'XwHat', 'XwSd', 'Tp', 'TpHat', 'TpSd', 'Ta', 'TaMeas', 'TaHat', 'RH', 'RHMeas', 'RHHat', 'B', 'BHat', 'BSd', 'Xin', 'XinHat', 'XinSd', 'Tin', 'G', 'Pw', 'offspec'];
+class Lane {
+  constructor(mode, mis, u0) {
+    this.mode = mode;
+    this.pp = plantParams(mis);
+    this.u = u0.slice(); this.uCmd = u0.slice();
+    this.x = steadyState(this.u, this.pp);
+    this.ekf = new EKF(NOMINAL);
+    this.pid = new PID();
+    this.mpc = new MPC(NOMINAL);
+    this.h = {}; HIST_KEYS.forEach(k => this.h[k] = []);
+    this.reason = ''; this.planT = 0;
+    this.resetKPI();
+  }
+  resetKPI() { this.k = { time: 0, iae: 0, energy: 0, mass: 0, water: 0, offMass: 0, tAbove: 0, TpMax: -Infinity, se: 0, cover: 0, n: 0 }; }
+  step(d, amb, t, cfg, stepIdx) {
+    // 1) true plant over one sample (RK4, 1 s substeps)
+    const xOld = this.x, dPlant = { Xin: d.Xin, Yamb: d.Yamb, Tamb: d.Tamb, Fs: d.Fs };
+    this.x = rk4(xOld, this.u, dPlant, this.pp, 1, TS);
+    const x = this.x;
+    // 2) noisy exhaust-air sensors
+    const nm = d.noiseMult;
+    const TaMeas = x[2] + SENSOR.sTa * nm * d.nTa;
+    const RHtrue = 100 * Math.min(1, rhFromHumidity(x[2], x[3]));
+    const RHMeas = clamp(RHtrue + SENSOR.sRH * nm * d.nRH, 0, 100);
+    // 3) EKF soft sensor
+    const dM = { Yamb: amb.Y, Tamb: amb.T, Fs: d.Fs };
+    this.ekf.predict(this.u, dM);
+    this.ekf.update([TaMeas, RHMeas]);
+    this.nisAvg = this.nisAvg === undefined ? this.ekf.nis : 0.97 * this.nisAvg + 0.03 * this.ekf.nis;
+    const e = this.ekf.x;
+    // 4) controller
+    if (this.mode === 'pid') {
+      this.pid.Kp = cfg.Kp; this.pid.Ti = cfg.Ti; this.pid.Td = cfg.Td;
+      this.uCmd = [clamp(this.pid.step(toWB(e[0]), cfg.sp, this.u[0]), LIMITS.TinMin, LIMITS.TinMax), cfg.Gfix];
+    } else if (this.mode === 'mpc') {
+      if (stepIdx % (MPC_DT / TS) === 0) {
+        this.mpc.wE = cfg.wE; this.mpc.wDu = cfg.wDu;
+        this.planT = t;
+        this.uCmd = this.mpc.solve(e.slice(0, 5), { Xin: e[5], Yamb: amb.Y, Tamb: amb.T, Fs: d.Fs }, this.u,
+          { sp: cfg.sp, Bmax: cfg.Bmax, Tmax: cfg.Tmax, backoff: cfg.backoff, zSigma: cfg.zSigma, sigmaTp: this.ekf.sd(1) });
+      }
+    } else this.uCmd = [cfg.TinOL, cfg.Gfix];
+    const uPrev = this.u;
+    this.u = [clamp(uPrev[0] + clamp(this.uCmd[0] - uPrev[0], -LIMITS.dTin, LIMITS.dTin), LIMITS.TinMin, LIMITS.TinMax),
+              clamp(uPrev[1] + clamp(this.uCmd[1] - uPrev[1], -LIMITS.dG, LIMITS.dG), LIMITS.Gmin, LIMITS.Gmax)];
+    // 5) KPIs (on the TRUE plant)
+    const pw = power(uPrev, dPlant, this.pp).total;
+    const Xw = toWB(x[0]);
+    const massOut = d.Fs * (1 + x[0]) * TS;
+    const water = Math.max(0, d.Fs * (d.Xin - 0.5 * (x[0] + xOld[0])) * TS - this.pp.Ms * (x[0] - xOld[0]));
+    const reason = x[1] > cfg.Tmax ? 'thermal limit exceeded' : x[4] > cfg.Bmax ? 'over-browned' : Xw > cfg.sp + cfg.tol ? 'too wet' : Xw < cfg.sp - cfg.tol ? 'over-dried' : '';
+    const off = reason !== '';
+    this.reason = reason;
+    const K = this.k;
+    K.time += TS; K.iae += Math.abs(Xw - cfg.sp) * TS / 60; K.energy += pw * TS; K.mass += massOut; K.water += water;
+    if (off) K.offMass += massOut;
+    if (x[1] > cfg.Tmax) K.tAbove += TS;
+    K.TpMax = Math.max(K.TpMax, x[1]);
+    const XwHat = toWB(e[0]), XwSd = 100 / ((1 + e[0]) ** 2) * this.ekf.sd(0);
+    if (K.time > 300) { K.se += (XwHat - Xw) ** 2; K.n++; if (Math.abs(XwHat - Xw) <= 2 * XwSd) K.cover++; } // skip EKF start-up transient
+    // 6) history
+    const H = this.h;
+    const rec = { t, Xw, XwHat, XwSd, Tp: x[1], TpHat: e[1], TpSd: this.ekf.sd(1), Ta: x[2], TaMeas, TaHat: e[2], RH: RHtrue, RHMeas,
+      RHHat: 100 * rhFromHumidity(e[2], e[3]), B: x[4], BHat: e[4], BSd: this.ekf.sd(4), Xin: toWB(d.Xin), XinHat: toWB(e[5]),
+      XinSd: 100 / ((1 + e[5]) ** 2) * this.ekf.sd(5), Tin: uPrev[0], G: uPrev[1], Pw: pw, offspec: off ? 1 : 0 };
+    for (const k of HIST_KEYS) H[k].push(rec[k]);
+  }
+  trim(max) { if (this.h.t.length > max) { const n = this.h.t.length - max; for (const k of HIST_KEYS) this.h[k].splice(0, n); } }
+}
+
+class Simulator {
+  constructor(seed, cfgOverride) {
+    this.seed = seed; this.t = 0; this.stepIdx = 0;
+    this.cfg = { sp: 9.0, tol: 1.0, Tmax: 60, backoff: 0.8, zSigma: 2, Bmax: 22, mismatch: 0.05, wE: 1.0, wDu: 2.0, Kp: 10, Ti: 240, Td: 15, Gfix: 4.0 };
+    Object.assign(this.cfg, cfgOverride || {});
+    this.cfg.TinOL = recipeTin(this.cfg.Gfix, this.cfg.sp);
+    this.dist = new Disturbances(seed);
+    const uR = [this.cfg.TinOL, this.cfg.Gfix];
+    this.lanes = { ol: new Lane('ol', this.cfg.mismatch, uR), pid: new Lane('pid', this.cfg.mismatch, uR), mpc: new Lane('mpc', this.cfg.mismatch, uR) };
+    this.amb = { T: 20, Y: 0.0080 };
+    this.shared = { t: [], Tamb: [], RHamb: [], Fs: [] };
+  }
+  // model-based forecast from the EKF estimate with the current inputs held (what-if view for OL / PID)
+  holdForecast(lane) {
+    const e = lane.ekf.x, zh = uToZ(lane.u), z = [];
+    for (let j = 0; j < MPC_NB; j++) z.push(zh[0], zh[1]);
+    return mpcPredict(e.slice(0, 5), z, { Xin: e[5], Yamb: this.amb.Y, Tamb: this.amb.T, Fs: this.d ? this.d.Fs : NOMINAL.Fs }, NOMINAL);
+  }
+  setGfix(G) { this.cfg.Gfix = G; this.cfg.TinOL = recipeTin(G, this.cfg.sp); }
+  resetKPI() { for (const k in this.lanes) this.lanes[k].resetKPI(); }
+  setMismatch(m) { this.cfg.mismatch = m; for (const k in this.lanes) this.lanes[k].pp = plantParams(m); }
+  step() {
+    const d = this.dist.step(this.t);
+    this.d = d;
+    this.t += TS; this.stepIdx++;
+    // intake weather station (noisy, first-order filtered)
+    const Tm = d.Tamb + SENSOR.sTamb * d.nTamb, RHm = clamp(d.RHamb + SENSOR.sRHamb / 100 * d.nRHamb, 0.01, 1);
+    this.amb.T += 0.3 * (Tm - this.amb.T);
+    this.amb.Y += 0.3 * (humidityFromRH(Tm, RHm) - this.amb.Y);
+    for (const k in this.lanes) this.lanes[k].step(d, this.amb, this.t, this.cfg, this.stepIdx);
+    const S = this.shared; S.t.push(this.t); S.Tamb.push(d.Tamb); S.RHamb.push(100 * d.RHamb); S.Fs.push(d.Fs * 3600);
+    const MAX = 4320;
+    if (S.t.length > MAX + 200) { const n = S.t.length - MAX; for (const k in S) S[k].splice(0, n); for (const k in this.lanes) this.lanes[k].trim(MAX); }
+  }
+}
+/* ==== SIM END ==== */
+
+</script>
+<script>
+/* ==== UI START ==== */
+(() => {
+  const $ = id => document.getElementById(id);
+  const LANES = ['ol', 'pid', 'mpc'];
+  const LANE_NAME = { ol: 'Open-loop', pid: 'PID', mpc: 'MPC' };
+  const C = {};
+  function readColors() {
+    const cs = getComputedStyle(document.documentElement);
+    ['surface', 'surface-2', 'ink', 'ink-2', 'muted', 'grid', 'axis', 'ol', 'pid', 'mpc', 'est', 'truth', 'meas', 'crit', 'good', 'event', 'forecast', 'spec']
+      .forEach(k => { C[k] = cs.getPropertyValue('--' + k).trim(); });
+  }
+
+  // ---------------- state ----------------
+  let seed = 20261025;
+  let sim = new Simulator(seed);
+  let focus = 'mpc', winMin = 60, running = true, speed = 2;
+  let hoverT = null, hoverChart = null, dirty = true;
+  let beltPos = 0, fanAngle = 0;
+  const requestDraw = () => { dirty = true; };
+
+  // ---------------- helpers ----------------
+  function lowerBound(a, v) { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < v) lo = m + 1; else hi = m; } return lo; }
+  function nearest(a, v) { if (!a.length) return -1; const i = lowerBound(a, v); if (i <= 0) return 0; if (i >= a.length) return a.length - 1; return (v - a[i - 1] <= a[i] - v) ? i - 1 : i; }
+  function niceTicks(lo, hi, n) {
+    const span = Math.max(hi - lo, 1e-9), raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+    const step = (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag;
+    const a = Math.floor(lo / step + 1e-9) * step, b = Math.ceil(hi / step - 1e-9) * step, ticks = [];
+    for (let v = a; v <= b + step * 1e-6; v += step) ticks.push(+v.toFixed(10));
+    return { lo: a, hi: b, step, ticks, dec: Math.max(0, -Math.floor(Math.log10(step) + 1e-9)) };
+  }
+  const fmt = (v, d) => (v === null || v === undefined || !isFinite(v)) ? '–' : v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const DPR = () => Math.min(2, window.devicePixelRatio || 1);
+  const FC_DT = MPC_DT;
+
+  // ---------------- canvas chart ----------------
+  class Chart {
+    constructor(mount, spec) {
+      this.spec = spec;
+      const fig = el('figure', 'chart');
+      const cap = el('figcaption');
+      this.titleEl = el('div', 'ct', spec.title);
+      cap.append(this.titleEl, el('div', 'cu', spec.unit));
+      fig.append(cap);
+      if (spec.sub) { this.subEl = el('div', 'cs', spec.sub); fig.append(this.subEl); }
+      this.legendEl = el('ul', 'legend'); fig.append(this.legendEl);
+      const plot = el('div', 'plot');
+      this.canvas = el('canvas'); this.canvas.tabIndex = 0;
+      this.canvas.setAttribute('role', 'img');
+      this.canvas.setAttribute('aria-label', spec.title + '. Hover, or focus and use the arrow keys, to read values.');
+      this.tip = el('div', 'tip'); this.tip.hidden = true;
+      plot.append(this.canvas, this.tip); fig.append(plot);
+      mount.append(fig);
+      this.H = spec.height || 178;
+      this.m = { l: 46, r: 10, t: 10, b: 22 };
+      this.W = 0; this.legendKey = '';
+      this.bind();
+    }
+    setLegend(items) {
+      const key = JSON.stringify(items);
+      if (key === this.legendKey) return;
+      this.legendKey = key; this.legendEl.textContent = '';
+      for (const it of items) {
+        const li = el('li'), sw = el('span', 'sw ' + (it.kind || ''));
+        if (it.kind === 'dash' || it.kind === 'rule') sw.style.borderTopColor = it.color;
+        else if (it.kind !== 'dots') sw.style.background = it.color;
+        if (it.kind === 'band') sw.style.opacity = '0.3';
+        li.append(sw, document.createTextNode(it.label));
+        this.legendEl.append(li);
+      }
+    }
+    resize() {
+      const w = Math.floor(this.canvas.parentElement.clientWidth);
+      if (w === this.W || w <= 0) return;
+      this.W = w; this.dpr = DPR();
+      this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(this.H * this.dpr);
+      this.canvas.style.height = this.H + 'px';
+    }
+    bind() {
+      const c = this.canvas;
+      const move = ev => {
+        if (!this.view) return;
+        const r = c.getBoundingClientRect();
+        hoverT = clamp(this.xToT(ev.clientX - r.left), this.view.t0, this.view.t1); hoverChart = this; requestDraw();
+      };
+      c.addEventListener('pointermove', move);
+      c.addEventListener('pointerdown', move);
+      c.addEventListener('pointerleave', () => { if (hoverChart === this) { hoverT = null; hoverChart = null; requestDraw(); } });
+      c.addEventListener('focus', () => { hoverChart = this; if (hoverT === null) hoverT = sim.t; requestDraw(); });
+      c.addEventListener('blur', () => { if (hoverChart === this) { hoverChart = null; hoverT = null; requestDraw(); } });
+      c.addEventListener('keydown', ev => {
+        if (!this.view) return;
+        const st = ev.shiftKey ? 300 : 30, cur = hoverT === null ? sim.t : hoverT;
+        if (ev.key === 'ArrowLeft') hoverT = Math.max(this.view.t0, cur - st);
+        else if (ev.key === 'ArrowRight') hoverT = Math.min(this.view.t1, cur + st);
+        else if (ev.key === 'Escape') hoverT = null;
+        else return;
+        ev.preventDefault(); hoverChart = this; requestDraw();
+      });
+    }
+    xToT(x) { const { t0, t1 } = this.view, pw = this.W - this.m.l - this.m.r; return t0 + (x - this.m.l) / pw * (t1 - t0); }
+    draw(V) {
+      this.resize(); if (!this.W) return;
+      this.view = V;
+      const spec = this.spec, layers = spec.layers(V).filter(Boolean);
+      if (spec.legend) this.setLegend(spec.legend(V));
+      if (spec.title2) { const t = spec.title2(); if (t !== this.titleEl.textContent) this.titleEl.textContent = t; }
+      const ctx = this.canvas.getContext('2d');
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      const W = this.W, H = this.H, m = this.m, pw = W - m.l - m.r, ph = H - m.t - m.b;
+      ctx.clearRect(0, 0, W, H);
+      // ---- y-range from every visible layer ----
+      let lo = Infinity, hi = -Infinity;
+      const inc = v => { if (v === v && isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } };
+      for (const L of layers) {
+        if (L.type === 'hline') { if (L.include !== false) inc(L.y); continue; }
+        if (L.type === 'hband') { inc(L.y0); inc(L.y1); continue; }
+        const i0 = Math.max(0, lowerBound(L.t, V.t0) - 1), i1 = Math.min(L.t.length, lowerBound(L.t, V.t1) + 1);
+        L.i0 = i0; L.i1 = i1;
+        const k = L.k || 2;
+        if (L.type === 'band') for (let i = i0; i < i1; i++) { inc(L.y[i] - k * L.sd[i]); inc(L.y[i] + k * L.sd[i]); }
+        else for (let i = i0; i < i1; i++) inc(L.y[i]);
+      }
+      if (!isFinite(lo)) { lo = spec.yDefault ? spec.yDefault[0] : 0; hi = spec.yDefault ? spec.yDefault[1] : 1; }
+      let span = Math.max(hi - lo, spec.minSpan || 1e-6), mid = 0.5 * (lo + hi);
+      lo = mid - 0.56 * span; hi = mid + 0.56 * span;
+      if (spec.floor !== undefined && lo < spec.floor) { hi += spec.floor - lo; lo = spec.floor; }
+      const tk = niceTicks(lo, hi, Math.max(3, Math.round(ph / 36)));
+      const yLo = tk.lo, yHi = tk.hi;
+      const X = t => m.l + (t - V.t0) / (V.t1 - V.t0) * pw;
+      const Y = v => m.t + (1 - (v - yLo) / (yHi - yLo)) * ph;
+      ctx.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif';
+      ctx.textBaseline = 'middle';
+      // ---- forecast region ----
+      const xNow = X(V.now), xFc = X(Math.min(V.t1, V.now + V.horizon));
+      if (xFc > xNow) { ctx.fillStyle = C.forecast; ctx.fillRect(xNow, m.t, xFc - xNow, ph); }
+      // ---- disturbance event spans ----
+      for (const ev of V.events) {
+        if (ev.end < V.t0 || ev.start > V.now) continue;
+        const a = X(Math.max(ev.start, V.t0)), b = X(Math.min(ev.end, V.now));
+        ctx.fillStyle = C.event; ctx.fillRect(a, m.t, Math.max(1, b - a), ph);
+        if (b - a > 46 && spec.eventLabels) { ctx.fillStyle = C.muted; ctx.textAlign = 'left'; ctx.fillText(EVENT_TYPES[ev.type].short, a + 4, m.t + 8); }
+      }
+      // ---- grid + y labels ----
+      ctx.lineWidth = 1; ctx.strokeStyle = C.grid; ctx.fillStyle = C.muted; ctx.textAlign = 'right';
+      for (const v of tk.ticks) {
+        const y = Math.round(Y(v)) + 0.5;
+        ctx.beginPath(); ctx.moveTo(m.l, y); ctx.lineTo(W - m.r, y); ctx.stroke();
+        ctx.fillText(fmt(v, tk.dec), m.l - 6, y);
+      }
+      ctx.save(); ctx.beginPath(); ctx.rect(m.l, m.t - 1, pw, ph + 2); ctx.clip();
+      // ---- reference bands / lines ----
+      for (const L of layers) if (L.type === 'hband') { ctx.fillStyle = L.color; ctx.fillRect(m.l, Y(L.y1), pw, Y(L.y0) - Y(L.y1)); }
+      // ---- uncertainty bands ----
+      for (const L of layers) {
+        if (L.type !== 'band' || L.i1 - L.i0 < 2) continue;
+        const k = L.k || 2;
+        ctx.beginPath();
+        for (let i = L.i0; i < L.i1; i++) { const x = X(L.t[i]), y = Y(L.y[i] + k * L.sd[i]); i === L.i0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+        for (let i = L.i1 - 1; i >= L.i0; i--) ctx.lineTo(X(L.t[i]), Y(L.y[i] - k * L.sd[i]));
+        ctx.closePath(); ctx.globalAlpha = L.alpha || 0.16; ctx.fillStyle = L.color; ctx.fill(); ctx.globalAlpha = 1;
+      }
+      // ---- measured samples ----
+      for (const L of layers) {
+        if (L.type !== 'dots') continue;
+        ctx.fillStyle = L.color; ctx.globalAlpha = 0.6;
+        for (let i = L.i0; i < L.i1; i++) { const v = L.y[i]; if (v === v) ctx.fillRect(X(L.t[i]) - 1.1, Y(v) - 1.1, 2.2, 2.2); }
+        ctx.globalAlpha = 1;
+      }
+      // ---- lines ----
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      for (const L of layers) {
+        if (L.type !== 'line' || L.i1 - L.i0 < 1) continue;
+        ctx.strokeStyle = L.color; ctx.lineWidth = L.width || 2; ctx.globalAlpha = L.alpha || 1;
+        ctx.setLineDash(L.dash ? [5, 4] : []);
+        ctx.beginPath();
+        const gap = L.gap || 3 * TS; let pen = false, lastT = -Infinity, lastY = 0;
+        for (let i = L.i0; i < L.i1; i++) {
+          const v = L.y[i]; if (!(v === v)) { pen = false; continue; }
+          const x = X(L.t[i]), y = Y(v);
+          if (!pen || L.t[i] - lastT > gap) { ctx.moveTo(x, y); pen = true; }
+          else { if (L.step) ctx.lineTo(x, lastY); ctx.lineTo(x, y); }
+          lastT = L.t[i]; lastY = y;
+        }
+        if (L.step && pen) ctx.lineTo(X(lastT + L.stepDur), lastY);
+        ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      }
+      // ---- limit / set-point rules (drawn over the data so they stay legible) ----
+      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      for (const L of layers) {
+        if (L.type !== 'hline') continue;
+        const y = Math.round(Y(L.y)) + 0.5;
+        if (y < m.t || y > m.t + ph) continue;
+        ctx.strokeStyle = L.color; ctx.lineWidth = L.width || 1.5; ctx.setLineDash(L.dash ? [3, 3] : []);
+        ctx.beginPath(); ctx.moveTo(m.l, y); ctx.lineTo(W - m.r, y); ctx.stroke(); ctx.setLineDash([]);
+        if (L.label) {
+          // sit just left of "now"; early in a run, when there is no room there, go right of the forecast area
+          const tw = ctx.measureText(L.label).width, ly = y - 3;
+          const xr = xNow - 6 - tw > m.l + 4 ? xNow - 6 : xFc + 6 + tw < W - m.r - 4 ? xFc + 6 + tw : W - m.r - 4;
+          ctx.fillStyle = C.surface; ctx.globalAlpha = 0.85; ctx.fillRect(xr - tw - 3, ly - 12, tw + 6, 13); ctx.globalAlpha = 1;
+          ctx.fillStyle = C['ink-2']; ctx.fillText(L.label, xr, ly);
+        }
+      }
+      ctx.restore();
+      // ---- now marker ----
+      ctx.strokeStyle = C.axis; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(Math.round(xNow) + 0.5, m.t); ctx.lineTo(Math.round(xNow) + 0.5, m.t + ph); ctx.stroke();
+      ctx.textBaseline = 'middle';
+      if (xFc - xNow > 40) { ctx.fillStyle = C.muted; ctx.textAlign = 'left'; ctx.fillText('forecast', xNow + 5, m.t + 8); }
+      // ---- x axis ----
+      ctx.strokeStyle = C.axis; ctx.beginPath(); ctx.moveTo(m.l, m.t + ph + 0.5); ctx.lineTo(W - m.r, m.t + ph + 0.5); ctx.stroke();
+      ctx.fillStyle = C.muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      const stepMin = V.win <= 30 ? 5 : V.win <= 60 ? 10 : 20;
+      for (let mm = Math.ceil(V.t0 / 60 / stepMin) * stepMin; mm * 60 <= V.t1; mm += stepMin) {
+        const x = X(mm * 60); if (x < m.l + 8 || x > W - m.r - 8) continue;
+        ctx.fillText(mm + (x > W - m.r - 50 ? ' min' : ''), x, m.t + ph + 6);
+      }
+      // ---- crosshair + markers + tooltip ----
+      if (hoverT !== null) {
+        const xh = Math.round(X(hoverT)) + 0.5;
+        ctx.strokeStyle = C['ink-2']; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(xh, m.t); ctx.lineTo(xh, m.t + ph); ctx.stroke();
+        const rows = [];
+        for (const L of layers) {
+          if (!L.tip || !L.t.length) continue;
+          const i = nearest(L.t, hoverT);
+          if (i < 0 || Math.abs(L.t[i] - hoverT) > (L.tol || TS * 1.5)) continue;
+          const v = L.y[i]; if (!(v === v)) continue;
+          if (L.type === 'line') {
+            const y = Y(v);
+            if (y >= m.t && y <= m.t + ph) {
+              ctx.beginPath(); ctx.arc(X(L.t[i]), y, 4, 0, 2 * Math.PI);
+              ctx.fillStyle = L.color; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = C.surface; ctx.stroke();
+            }
+          }
+          rows.push({ label: L.tip, color: L.type === 'dots' ? C.meas : L.color, val: fmt(v, L.fmt ?? 2) + (L.sdTip ? ' ± ' + fmt(2 * L.sdTip[i], L.fmt ?? 2) : ''), dash: L.dash });
+        }
+        if (hoverChart === this && rows.length) this.showTip(rows, X(hoverT), hoverT > V.now);
+        else this.tip.hidden = true;
+      } else this.tip.hidden = true;
+    }
+    showTip(rows, x, future) {
+      const tip = this.tip; tip.textContent = '';
+      tip.append(el('div', 'tt', 't = ' + fmt(hoverT / 60, 1) + ' min' + (future ? ' · forecast' : '') + ' · ' + this.spec.unit));
+      for (const r of rows) {
+        const row = el('div', 'row'), k = el('span', 'k'), i = el('i');
+        i.style.background = r.color; if (r.dash) { i.style.background = 'none'; i.style.borderTop = '2px dashed ' + r.color; i.style.height = '0'; }
+        k.append(i, document.createTextNode(r.label));
+        row.append(k, el('b', '', r.val)); tip.append(row);
+      }
+      tip.hidden = false;
+      const tw = tip.offsetWidth, left = x + 14 + tw > this.W ? x - 14 - tw : x + 14;
+      tip.style.left = Math.max(0, left) + 'px';
+    }
+  }
+
+  // ---------------- forecasts ----------------
+  const tCache = new Map();
+  function fcTimes(t0) {
+    if (!tCache.has(t0)) { if (tCache.size > 8) tCache.clear(); const a = new Float64Array(MPC_N); for (let k = 0; k < MPC_N; k++) a[k] = t0 + (k + 1) * FC_DT; tCache.set(t0, a); }
+    return tCache.get(t0);
+  }
+  function uTimes(t0) { const key = -t0 - 1; if (!tCache.has(key)) { const a = new Float64Array(MPC_N); for (let k = 0; k < MPC_N; k++) a[k] = t0 + k * FC_DT; tCache.set(key, a); } return tCache.get(key); }
+  function mpcPlan() {
+    const L = sim.lanes.mpc, pl = L.mpc.plan; if (!pl) return null;
+    if (!pl._u0) { pl._u0 = Float64Array.from(pl.U, u => u[0]); pl._u1 = Float64Array.from(pl.U, u => u[1]); }
+    return { t: fcTimes(L.planT), tu: uTimes(L.planT), Xw: pl.Xw, Tp: pl.Tp, B: pl.B, Pw: pl.Pw, Tin: pl._u0, G: pl._u1 };
+  }
+  let fcCache = { t: -1, lane: null, f: null };
+  function focusForecast() {
+    if (focus === 'mpc') { const p = mpcPlan(); return p && { t: p.t, Xw: p.Xw, Tp: p.Tp, B: p.B, label: 'MPC prediction' }; }
+    if (fcCache.t !== sim.t || fcCache.lane !== focus) {
+      const pr = sim.holdForecast(sim.lanes[focus]);
+      fcCache = { t: sim.t, lane: focus, f: { t: fcTimes(sim.t), Xw: pr.Xw, Tp: pr.Tp, B: pr.B, label: 'Hold-input forecast' } };
+    }
+    return fcCache.f;
+  }
+
+  // ---------------- chart specs ----------------
+  const H = l => sim.lanes[l].h;
+  const laneLines = (key, d) => {
+    const order = LANES.filter(l => l !== focus).concat([focus]);
+    return order.map(l => ({ type: 'line', t: H(l).t, y: H(l)[key], color: C[l], width: l === focus ? 2.25 : 1.6, tip: LANE_NAME[l], fmt: d }));
+  };
+  const laneLegend = extra => () => LANES.map(l => ({ label: LANE_NAME[l], color: C[l] })).concat(extra ? extra() : []);
+  const planLine = (key, d, step) => { const p = mpcPlan(); if (!p) return null; return { type: 'line', t: step ? p.tu : p.t, y: p[key], color: C.mpc, width: 1.75, dash: true, gap: 3 * FC_DT, tip: 'MPC plan', fmt: d, tol: FC_DT * 0.6, step: !!step, stepDur: FC_DT }; };
+  const cfg = () => sim.cfg;
+
+  const CMP = [
+    { title: 'Outlet moisture', unit: '% w.b.', minSpan: 2.4, eventLabels: true,
+      layers: () => [{ type: 'hband', y0: cfg().sp - cfg().tol, y1: cfg().sp + cfg().tol, color: C.spec },
+        { type: 'hline', y: cfg().sp, color: C['ink-2'], width: 1, label: 'set-point ' + fmt(cfg().sp, 1) + ' %' }, ...laneLines('Xw', 2), planLine('Xw', 2)],
+      legend: laneLegend(() => [{ label: 'MPC plan', color: C.mpc, kind: 'dash' }, { label: 'Spec band', color: C.good, kind: 'band' }]) },
+    { title: 'Product temperature', unit: '°C', minSpan: 8,
+      layers: () => [{ type: 'hline', y: cfg().Tmax, color: C.crit, label: 'T max ' + fmt(cfg().Tmax, 1) + ' °C' },
+        { type: 'hline', y: sim.lanes.mpc.mpc.diag.Tlim || cfg().Tmax, color: C.muted, width: 1, dash: true, include: false, label: '' }, ...laneLines('Tp', 1), planLine('Tp', 1)],
+      legend: laneLegend(() => [{ label: 'MPC plan', color: C.mpc, kind: 'dash' }, { label: 'T max', color: C.crit, kind: 'rule' }, { label: 'MPC tightened limit', color: C.muted, kind: 'dash' }]) },
+    { title: 'Browning index (quality)', unit: 'BI', minSpan: 6,
+      layers: () => [{ type: 'hline', y: cfg().Bmax, color: C.crit, label: 'B max ' + fmt(cfg().Bmax, 0) }, ...laneLines('B', 1), planLine('B', 1)],
+      legend: laneLegend(() => [{ label: 'MPC plan', color: C.mpc, kind: 'dash' }, { label: 'B max', color: C.crit, kind: 'rule' }]) },
+    { title: 'Heater + fan power', unit: 'kW', minSpan: 60,
+      layers: () => [...laneLines('Pw', 0), planLine('Pw', 0)], legend: laneLegend(() => [{ label: 'MPC plan', color: C.mpc, kind: 'dash' }]) },
+    { title: 'Inlet air temperature (MV 1)', unit: '°C', minSpan: 20,
+      layers: () => [...laneLines('Tin', 1), planLine('Tin', 1, true)], legend: laneLegend(() => [{ label: 'MPC plan', color: C.mpc, kind: 'dash' }]) },
+    { title: 'Drying-air flow (MV 2)', unit: 'kg/s', minSpan: 1.5,
+      layers: () => [...laneLines('G', 2), planLine('G', 2, true)], legend: laneLegend(() => [{ label: 'MPC plan', color: C.mpc, kind: 'dash' }]) },
+  ];
+
+  const fl = () => sim.lanes[focus].h;
+  const ekfTriplet = (kTrue, kHat, kSd, d) => {
+    const h = fl(), f = focusForecast();
+    return [kSd ? { type: 'band', t: h.t, y: h[kHat], sd: h[kSd], color: C.est, alpha: 0.18 } : null,
+      { type: 'line', t: h.t, y: h[kTrue], color: C.truth, width: 1.5, alpha: 0.85, tip: 'True (hidden)', fmt: d },
+      { type: 'line', t: h.t, y: h[kHat], color: C.est, width: 2, tip: 'EKF', fmt: d, sdTip: kSd ? h[kSd] : null },
+      f && f[kTrue] ? { type: 'line', t: f.t, y: f[kTrue], color: C.est, width: 1.75, dash: true, gap: 3 * FC_DT, tip: f.label, fmt: d, tol: FC_DT * 0.6 } : null];
+  };
+  const ekfLegend = (opts = {}) => () => {
+    const f = focusForecast(), items = [{ label: opts.trueLabel || 'True plant (hidden)', color: C.truth }, { label: 'EKF estimate', color: C.est }];
+    if (opts.band !== false) items.push({ label: '±2σ', color: C.est, kind: 'band' });
+    if (opts.meas) items.unshift({ label: 'Measured (noisy)', color: C.meas, kind: 'dots' });
+    if (opts.fc && f) items.push({ label: f.label, color: C.est, kind: 'dash' });
+    if (opts.limit) items.push({ label: opts.limit, color: C.crit, kind: 'rule' });
+    return items;
+  };
+  const EKFC = [
+    { title: 'Core moisture X', unit: '% w.b.', sub: 'Hidden state · inferred', minSpan: 1.6, eventLabels: true,
+      layers: () => [{ type: 'hline', y: cfg().sp, color: C['ink-2'], width: 1, label: 'set-point' }, ...ekfTriplet('Xw', 'XwHat', 'XwSd', 2)], legend: ekfLegend({ fc: true }) },
+    { title: 'Product temperature Tp', unit: '°C', sub: 'Hidden state · inferred', minSpan: 6,
+      layers: () => [{ type: 'hline', y: cfg().Tmax, color: C.crit, label: 'T max' }, ...ekfTriplet('Tp', 'TpHat', 'TpSd', 1)], legend: ekfLegend({ fc: true, limit: 'T max' }) },
+    { title: 'Maillard browning index B', unit: 'BI', sub: 'Unmeasured quality · not observable, detectable', minSpan: 5,
+      layers: () => [{ type: 'hline', y: cfg().Bmax, color: C.crit, label: 'B max' }, ...ekfTriplet('B', 'BHat', 'BSd', 1)], legend: ekfLegend({ fc: true, limit: 'B max' }) },
+    { title: 'Raw-feed moisture Xin', unit: '% w.b.', sub: 'Unmeasured disturbance · random-walk state', minSpan: 3,
+      layers: () => ekfTriplet('Xin', 'XinHat', 'XinSd', 2), legend: ekfLegend({ trueLabel: 'True feed (unmeasured)' }) },
+    { title: 'Exhaust air temperature', unit: '°C', sub: 'Measured · TT sensor, Gaussian noise', minSpan: 4,
+      layers: () => { const h = fl(); return [{ type: 'dots', t: h.t, y: h.TaMeas, color: C.meas, tip: 'Measured', fmt: 2 },
+        { type: 'line', t: h.t, y: h.Ta, color: C.truth, width: 1.5, alpha: 0.85, tip: 'True', fmt: 2 }, { type: 'line', t: h.t, y: h.TaHat, color: C.est, width: 2, tip: 'EKF', fmt: 2 }]; },
+      legend: ekfLegend({ meas: true, band: false, trueLabel: 'True' }) },
+    { title: 'Exhaust air relative humidity', unit: '% RH', sub: 'Measured · MT sensor, Gaussian noise', minSpan: 6, floor: 0,
+      layers: () => { const h = fl(); return [{ type: 'dots', t: h.t, y: h.RHMeas, color: C.meas, tip: 'Measured', fmt: 1 },
+        { type: 'line', t: h.t, y: h.RH, color: C.truth, width: 1.5, alpha: 0.85, tip: 'True', fmt: 1 }, { type: 'line', t: h.t, y: h.RHHat, color: C.est, width: 2, tip: 'EKF', fmt: 1 }]; },
+      legend: ekfLegend({ meas: true, band: false, trueLabel: 'True' }) },
+  ];
+  EVENT_TYPES.wet.short = 'wet feed'; EVENT_TYPES.humid.short = 'humid air'; EVENT_TYPES.surge.short = 'surge'; EVENT_TYPES.cold.short = 'cold snap'; EVENT_TYPES.noise.short = 'noise';
+  EVENT_TYPES.wet.desc = '+3.4 % w.b. raw-feed moisture · 12 min';
+  EVENT_TYPES.humid.desc = '+9 g/kg ambient humidity, +3 °C · 15 min';
+  EVENT_TYPES.surge.desc = '+25 % extruder throughput · 10 min';
+  EVENT_TYPES.cold.desc = '−12 °C intake air · 15 min';
+  EVENT_TYPES.noise.desc = '5× exhaust sensor noise · 5 min';
+
+  let charts = [];
+  function buildCharts() {
+    charts = [];
+    CMP.forEach(s => charts.push(new Chart($('cmpCharts'), s)));
+    EKFC.forEach(s => charts.push(new Chart($('ekfCharts'), s)));
+  }
+
+  // ---------------- schematic ----------------
+  const NPIECE = 24, BELT_X0 = 262, BELT_X1 = 608;
+  function buildSchematic() {
+    const svg = $('schematic');
+    const S = 'style';
+    svg.insertAdjacentHTML('beforeend', `
+      <defs>
+        <marker id="arw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--ink-2)"/></marker>
+      </defs>
+      <!-- extruder -->
+      <polygon points="42,18 96,18 82,44 56,44" style="fill:var(--surface-2);stroke:var(--axis);stroke-width:1.5"/>
+      <text x="69" y="12" text-anchor="middle" font-size="11" class="t-m">raw feed + water</text>
+      <rect x="8" y="46" width="26" height="40" rx="4" style="fill:var(--surface-2);stroke:var(--axis);stroke-width:1.5"/>
+      <text x="21" y="70" text-anchor="middle" font-size="12" font-weight="600" class="t-2">M</text>
+      <rect x="34" y="44" width="172" height="44" rx="7" style="fill:var(--sunken);stroke:var(--axis);stroke-width:1.5"/>
+      <path id="screw1" d="" style="fill:none;stroke:var(--ink-2);stroke-width:1.5;opacity:.7"/>
+      <path id="screw2" d="" style="fill:none;stroke:var(--ink-2);stroke-width:1.5;opacity:.7"/>
+      <polygon points="206,52 222,59 222,73 206,80" style="fill:var(--surface-2);stroke:var(--axis);stroke-width:1.5"/>
+      <text x="120" y="104" text-anchor="middle" font-size="12" class="t-2">Twin-screw extruder</text>
+      <path d="M222,66 C246,70 252,140 258,186" style="fill:none;stroke:var(--axis);stroke-width:1.5;stroke-dasharray:2 4"/>
+      <text x="10" y="130" font-size="11" class="t-m">Raw-feed moisture X<tspan font-size="8" dy="2">in</tspan><tspan dy="-2"> (unmeasured)</tspan></text>
+      <text x="10" y="148" font-size="13" class="t-ink" id="sXin">–</text>
+      <text x="10" y="166" font-size="11" class="t-m" id="sXinTrue">–</text>
+      <text x="10" y="190" font-size="11" class="t-m">Throughput (dry solids)</text>
+      <text x="10" y="208" font-size="13" class="t-ink" id="sFs">–</text>
+      <!-- ambient + heater -->
+      <text x="236" y="40" font-size="11" class="t-m">Fresh air</text>
+      <text x="236" y="54" font-size="11" class="t-2" id="sAmb">–</text>
+      <line x1="236" y1="78" x2="296" y2="78" style="stroke:var(--ink-2);stroke-width:1.5" marker-end="url(#arw)"/>
+      <rect x="300" y="60" width="92" height="36" rx="6" style="fill:var(--surface-2);stroke:var(--axis);stroke-width:1.5"/>
+      <path id="flame" d="M322,90 C314,82 320,74 324,68 C325,74 330,75 330,80 C333,77 333,73 332,70 C338,76 338,86 330,90 Z" style="fill:var(--warn);opacity:.8"/>
+      <text x="364" y="76" text-anchor="middle" font-size="12" font-weight="600" class="t-2">Heater</text>
+      <text x="364" y="90" text-anchor="middle" font-size="11" class="t-m" id="sQ">–</text>
+      <line x1="346" y1="96" x2="346" y2="128" style="stroke:var(--ink-2);stroke-width:1.5" marker-end="url(#arw)"/>
+      <text x="352" y="116" font-size="11" class="t-2" id="sTin">–</text>
+      <!-- controller -->
+      <rect x="420" y="16" width="124" height="44" rx="6" style="fill:var(--surface);stroke:var(--ink-2);stroke-width:1.5"/>
+      <text x="482" y="33" text-anchor="middle" font-size="12" font-weight="600" class="t-ink" id="sCtrl">MPC</text>
+      <text x="482" y="50" text-anchor="middle" font-size="10.5" class="t-m" id="sCtrlSub">–</text>
+      <path d="M440,60 V78 H392" style="fill:none;stroke:var(--ink-2);stroke-width:1;stroke-dasharray:4 3"/>
+      <path d="M544,38 H586 V72" style="fill:none;stroke:var(--ink-2);stroke-width:1;stroke-dasharray:4 3"/>
+      <!-- dryer -->
+      <rect x="232" y="128" width="404" height="104" rx="10" style="fill:var(--surface-2);stroke:var(--axis);stroke-width:1.5"/>
+      <text x="244" y="146" font-size="12" font-weight="600" class="t-2">Conveyor belt dryer</text>
+      <text x="244" y="161" font-size="11" class="t-m">hot air through the product bed</text>
+      <g id="airArrows"></g>
+      <circle cx="258" cy="206" r="9" style="fill:var(--surface);stroke:var(--axis);stroke-width:1.5"/>
+      <circle cx="612" cy="206" r="9" style="fill:var(--surface);stroke:var(--axis);stroke-width:1.5"/>
+      <line x1="258" y1="197" x2="612" y2="197" style="stroke:var(--axis);stroke-width:1.5"/>
+      <line x1="258" y1="215" x2="612" y2="215" style="stroke:var(--axis);stroke-width:1.5"/>
+      <g id="pieces"></g>
+      <!-- exhaust -->
+      <line x1="586" y1="128" x2="586" y2="106" style="stroke:var(--ink-2);stroke-width:1.5"/>
+      <circle cx="586" cy="90" r="16" style="fill:var(--surface);stroke:var(--ink-2);stroke-width:1.5"/>
+      <g id="fan" transform="translate(586 90)"><path d="M0,0 C4,-6 4,-12 0,-13 C-4,-12 -4,-6 0,0 M0,0 C6,4 12,4 13,0 C12,-4 6,-4 0,0 M0,0 C-4,6 -4,12 0,13 C4,12 4,6 0,0 M0,0 C-6,-4 -12,-4 -13,0 C-12,4 -6,4 0,0" style="fill:var(--ink-2);opacity:.75"/></g>
+      <text x="564" y="100" text-anchor="end" font-size="10.5" class="t-m">exhaust fan</text>
+      <line x1="602" y1="90" x2="734" y2="90" style="stroke:var(--ink-2);stroke-width:1.5"/>
+      <line x1="734" y1="90" x2="734" y2="22" style="stroke:var(--ink-2);stroke-width:1.5" marker-end="url(#arw)"/>
+      <text x="726" y="16" text-anchor="end" font-size="11" class="t-m">exhaust</text>
+      <line x1="640" y1="90" x2="640" y2="78" style="stroke:var(--ink-2);stroke-width:1"/>
+      <circle cx="640" cy="66" r="12" style="fill:var(--surface);stroke:var(--ink-2);stroke-width:1.2"/>
+      <text x="640" y="70" text-anchor="middle" font-size="10" font-weight="600" class="t-2">TT</text>
+      <text x="640" y="44" text-anchor="middle" font-size="12" class="t-ink" id="sTa">–</text>
+      <line x1="690" y1="90" x2="690" y2="102" style="stroke:var(--ink-2);stroke-width:1"/>
+      <circle cx="690" cy="114" r="12" style="fill:var(--surface);stroke:var(--ink-2);stroke-width:1.2"/>
+      <text x="690" y="118" text-anchor="middle" font-size="10" font-weight="600" class="t-2">MT</text>
+      <text x="690" y="142" text-anchor="middle" font-size="12" class="t-ink" id="sRH">–</text>
+      <text x="564" y="116" text-anchor="end" font-size="11" class="t-2" id="sG">–</text>
+      <!-- outlet -->
+      <path d="M621,206 L664,246" style="stroke:var(--axis);stroke-width:1.5;stroke-dasharray:2 4"/>
+      <rect x="648" y="246" width="96" height="36" rx="5" style="fill:var(--surface-2);stroke:var(--axis);stroke-width:1.5"/>
+      <text x="696" y="268" text-anchor="middle" font-size="11.5" class="t-2">product out</text>
+      <text x="696" y="302" text-anchor="middle" font-size="12" font-weight="600" id="sStatus">–</text>
+      <text x="696" y="318" text-anchor="middle" font-size="10.5" class="t-m" id="sStatusSub">–</text>
+      <!-- soft-sensor strip -->
+      <g id="softStrip"></g>
+    `);
+    const mk = (x, label, id) => `
+      <rect x="${x}" y="246" width="128" height="74" rx="7" style="fill:var(--surface);stroke:var(--est);stroke-width:1.2"/>
+      <text x="${x + 10}" y="263" font-size="10.5" class="t-m">${label}</text>
+      <text x="${x + 10}" y="285" font-size="16" font-weight="600" class="t-ink" id="${id}">–</text>
+      <text x="${x + 10}" y="300" font-size="10.5" class="t-m" id="${id}U">–</text>
+      <text x="${x + 10}" y="314" font-size="10.5" class="t-m" id="${id}T">–</text>`;
+    $('softStrip').innerHTML = mk(232, 'EKF · core moisture', 'kX') + mk(370, 'EKF · product temp.', 'kT') + mk(508, 'EKF · browning index', 'kB');
+    // screws
+    const zig = y => { let d = `M40,${y}`; for (let x = 40; x < 204; x += 8) d += ` L${x + 4},${y - 6} L${x + 8},${y}`; return d; };
+    $('screw1').setAttribute('d', zig(60)); $('screw2').setAttribute('d', zig(78));
+    const ns = 'http://www.w3.org/2000/svg';
+    const g = $('pieces');
+    for (let i = 0; i < NPIECE; i++) { const r = document.createElementNS(ns, 'rect'); r.setAttribute('y', '188'); r.setAttribute('width', '11'); r.setAttribute('height', '7'); r.setAttribute('rx', '2.5'); g.appendChild(r); }
+    const a = $('airArrows');
+    for (let i = 0; i < 6; i++) { const l = document.createElementNS(ns, 'line'); const x = 300 + i * 52; l.setAttribute('x1', x); l.setAttribute('x2', x); l.setAttribute('y1', 168); l.setAttribute('y2', 186); l.setAttribute('marker-end', 'url(#arw)'); l.setAttribute('style', 'stroke:var(--ink-2);stroke-width:1.5'); a.appendChild(l); }
+  }
+  // product colour: pale extrudate -> golden -> brown with browning index
+  const BROWN = [[0, [236, 220, 170]], [14, [226, 190, 120]], [24, [196, 140, 70]], [36, [130, 78, 34]]];
+  function brownRGB(b) {
+    for (let i = 1; i < BROWN.length; i++) if (b <= BROWN[i][0] || i === BROWN.length - 1) {
+      const [b0, c0] = BROWN[i - 1], [b1, c1] = BROWN[i], f = clamp((b - b0) / (b1 - b0), 0, 1);
+      return c0.map((v, k) => Math.round(v + f * (c1[k] - v)));
+    }
+    return BROWN[0][1];
+  }
+  const setT = (id, s) => { const e = $(id); if (e && e.textContent !== s) e.textContent = s; };
+  function updateSchematic() {
+    const L = sim.lanes[focus], h = L.h, n = h.t.length - 1, e = L.ekf;
+    if (n < 0) return;
+    const d = sim.d || { Fs: NOMINAL.Fs };
+    setT('sXin', 'EKF ' + fmt(h.XinHat[n], 1) + ' ± ' + fmt(2 * h.XinSd[n], 1) + ' % w.b.');
+    setT('sXinTrue', 'true ' + fmt(h.Xin[n], 1) + ' % w.b.');
+    setT('sFs', fmt(d.Fs * 3600, 0) + ' kg/h');
+    const S = sim.shared, m = S.t.length - 1;
+    setT('sAmb', fmt(S.Tamb[m], 1) + ' °C · ' + fmt(S.RHamb[m], 0) + ' % RH');
+    const pw = power(L.u, { Yamb: sim.amb.Y, Tamb: sim.amb.T }, NOMINAL);
+    setT('sQ', fmt(pw.Q, 0) + ' kW');
+    setT('sTin', 'T in ' + fmt(L.u[0], 1) + ' °C');
+    setT('sG', 'G ' + fmt(L.u[1], 2) + ' kg/s');
+    setT('sTa', fmt(h.TaMeas[n], 1) + ' °C');
+    setT('sRH', fmt(h.RHMeas[n], 1) + ' % RH');
+    setT('sCtrl', focus === 'mpc' ? 'MPC (EKF-based)' : focus === 'pid' ? 'PID on EKF moisture' : 'Open-loop recipe');
+    setT('sCtrlSub', focus === 'mpc' ? 'manipulates T in and G' : focus === 'pid' ? 'manipulates T in, G fixed' : 'T in, G fixed');
+    $('flame').style.opacity = String(clamp(0.25 + pw.Q / 700, 0.25, 1));
+    setT('kX', fmt(h.XwHat[n], 2) + ' ± ' + fmt(2 * h.XwSd[n], 2)); setT('kXU', '% w.b. (2σ)'); setT('kXT', 'true ' + fmt(h.Xw[n], 2));
+    setT('kT', fmt(h.TpHat[n], 1) + ' ± ' + fmt(2 * h.TpSd[n], 1)); setT('kTU', '°C (2σ)'); setT('kTT', 'true ' + fmt(h.Tp[n], 1));
+    setT('kB', fmt(h.BHat[n], 1) + ' ± ' + fmt(2 * h.BSd[n], 1)); setT('kBU', 'BI (2σ)'); setT('kBT', 'true ' + fmt(h.B[n], 1));
+    const st = $('sStatus');
+    if (L.reason) { setT('sStatus', '✕ Off-spec'); st.style.fill = 'var(--crit-text)'; setT('sStatusSub', L.reason); }
+    else { setT('sStatus', '✓ In spec'); st.style.fill = 'var(--good-text)'; setT('sStatusSub', fmt(h.Xw[n], 2) + ' % w.b.'); }
+    // belt pieces: colour ramps from fresh extrudate to the current outlet browning
+    const pieces = $('pieces').children, span = BELT_X1 - BELT_X0, gapPx = span / NPIECE;
+    const cIn = brownRGB(NOMINAL.Bin), cOut = brownRGB(L.x[4]);
+    for (let i = 0; i < NPIECE; i++) {
+      const x = BELT_X0 + ((i * gapPx + beltPos) % span), f = (x - BELT_X0) / span;
+      const c = cIn.map((v, k) => Math.round(v + f * (cOut[k] - v)));
+      pieces[i].setAttribute('x', x.toFixed(1)); pieces[i].setAttribute('fill', `rgb(${c[0]},${c[1]},${c[2]})`);
+    }
+    $('fan').setAttribute('transform', `translate(586 90) rotate(${fanAngle.toFixed(1)})`);
+    const ar = $('airArrows').children, op = clamp(0.25 + (L.u[1] - 2) / 6 * 0.75, 0.25, 1);
+    for (const a of ar) a.style.opacity = String(op);
+  }
+
+  // ---------------- focus stats ----------------
+  function updateStats() {
+    const L = sim.lanes[focus], h = L.h, n = h.t.length - 1, K = L.k; if (n < 0) return;
+    const box = $('focusStats');
+    const items = [
+      ['Outlet moisture (true)', fmt(h.Xw[n], 2) + ' %', 'EKF ' + fmt(h.XwHat[n], 2) + ' ± ' + fmt(2 * h.XwSd[n], 2)],
+      ['Product temperature', fmt(h.Tp[n], 1) + ' °C', 'limit ' + fmt(sim.cfg.Tmax, 1) + ' °C'],
+      ['Heater + fan', fmt(h.Pw[n], 0) + ' kW', fmt(K.mass ? K.energy / K.mass : NaN, 0) + ' kJ/kg so far'],
+      ['Off-spec (cumulative)', fmt(K.mass ? 100 * K.offMass / K.mass : 0, 1) + ' %', L.reason ? 'now: ' + L.reason : 'now: in spec'],
+    ];
+    if (box.children.length !== items.length) { box.textContent = ''; items.forEach(() => { const s = el('div', 'stat'); s.append(el('div', 'l'), el('div', 'v'), el('div', 's')); box.append(s); }); }
+    items.forEach((it, i) => { const c = box.children[i].children; c[0].textContent = it[0]; c[1].textContent = it[1]; c[2].textContent = it[2]; });
+  }
+
+  // ---------------- KPI table ----------------
+  function updateKPIs() {
+    const tb = $('kpiTable').tBodies[0];
+    const vals = LANES.map(l => {
+      const K = sim.lanes[l].k;
+      return { l, iae: K.iae, spe: K.mass ? K.energy / K.mass : NaN, epw: K.water ? K.energy / K.water : NaN, off: K.mass ? 100 * K.offMass / K.mass : NaN,
+        tmax: K.TpMax, above: K.tAbove / 60, rmse: K.n ? Math.sqrt(K.se / K.n) : NaN, cov: K.n ? 100 * K.cover / K.n : NaN };
+    });
+    const cols = [['iae', 1, true], ['spe', 0, true], ['epw', 0, true], ['off', 1, true], ['tmax', 1, false], ['above', 1, true], ['rmse', 3, false], ['cov', 0, false]];
+    const best = {};
+    // "best" marks the strict winner of a column; ties (e.g. everyone at 0 min above T max) get no badge
+    for (const [k, , b] of cols) if (b) { const s = vals.map(v => v[k]).filter(isFinite).sort((a, c) => a - c); best[k] = s.length > 1 && s[1] - s[0] > 1e-9 ? s[0] : NaN; }
+    if (tb.rows.length !== 3) { tb.textContent = ''; LANES.forEach(l => { const tr = tb.insertRow(); const th = el('th'); th.scope = 'row'; const key = el('span', 'lane-key'); key.style.background = `var(--${l})`; th.append(key, document.createTextNode(LANE_NAME[l])); tr.append(th); cols.forEach(() => tr.insertCell()); }); }
+    vals.forEach((v, r) => {
+      const tr = tb.rows[r]; tr.className = v.l === focus ? 'focus' : '';
+      cols.forEach(([k, d, b], c) => {
+        const td = tr.cells[c + 1]; td.textContent = fmt(v[k], d);
+        if (k === 'tmax' && v[k] > sim.cfg.Tmax) td.classList.add('bad'); else td.classList.remove('bad');
+        if (b && isFinite(v[k]) && Math.abs(v[k] - best[k]) < 1e-9 && sim.t > 60) td.append(el('span', 'best', 'best'));
+      });
+    });
+    const p = vals[1], q = vals[2], o = vals[0];
+    const s = $('kpiSummary');
+    if (!isFinite(p.spe) || sim.t < 120) { s.textContent = 'Collecting data…'; return; }
+    const de = 100 * (q.spe - p.spe) / p.spe, di = p.iae > 0 ? 100 * (q.iae - p.iae) / p.iae : 0;
+    s.textContent = '';
+    const b = t => el('b', '', t);
+    s.append('MPC vs PID: specific energy ', b((de > 0 ? '+' : '') + fmt(de, 1) + ' %'), ', moisture IAE ', b((di > 0 ? '+' : '') + fmt(di, 0) + ' %'),
+      ', off-spec ', b(fmt(q.off, 1) + ' %'), ' vs ', b(fmt(p.off, 1) + ' %'), ' (open-loop ', b(fmt(o.off, 1) + ' %'), '), time above T max ',
+      b(fmt(q.above, 1) + ' min'), ' vs ', b(fmt(p.above, 1) + ' min'), '.');
+  }
+
+  // ---------------- diagnostics ----------------
+  function setDiag(id, rows) {
+    const dl = $(id);
+    if (dl.children.length !== rows.length * 2) { dl.textContent = ''; rows.forEach(() => { dl.append(el('dt'), el('dd')); }); }
+    rows.forEach((r, i) => { dl.children[2 * i].textContent = r[0]; dl.children[2 * i + 1].textContent = r[1]; });
+  }
+  function updateDiag() {
+    const M = sim.lanes.mpc, dg = M.mpc.diag;
+    setDiag('mpcDiag', [
+      ['Solve time (last)', fmt(dg.ms, 1) + ' ms'],
+      ['SQP iterations', String(dg.iters || 0)],
+      ['Horizon', MPC_N + ' × ' + MPC_DT + ' s = ' + (MPC_N * MPC_DT / 60) + ' min, ' + MPC_NB + ' move blocks'],
+      ['Tightened limit T max − δ − 2σ', fmt(dg.Tlim, 2) + ' °C'],
+      ['Predicted peak T p over horizon', fmt(dg.maxTp, 2) + ' °C'],
+      ['Active T p constraints', (dg.active || 0) + ' of ' + MPC_N],
+      ['Safety filter', dg.filtered ? 'engaged: T in plan scaled down' : 'idle'],
+      ['Applied T in / G', fmt(M.u[0], 1) + ' °C / ' + fmt(M.u[1], 2) + ' kg/s'],
+      ['Objective J', fmt(dg.J, 3)],
+    ]);
+    const L = sim.lanes[focus], e = L.ekf;
+    setDiag('ekfDiag', [
+      ['Innovation T a / RH', fmt(e.innov[0], 2) + ' °C / ' + fmt(e.innov[1], 2) + ' %'],
+      ['NIS (running mean, expected ≈ 2)', fmt(L.nisAvg, 2)],
+      ['σ core moisture', fmt(100 / ((1 + e.x[0]) ** 2) * e.sd(0), 3) + ' % w.b.'],
+      ['σ product temp. / browning', fmt(e.sd(1), 2) + ' °C / ' + fmt(e.sd(4), 2) + ' BI'],
+      ['σ raw-feed moisture', fmt(100 / ((1 + e.x[5]) ** 2) * e.sd(5), 2) + ' % w.b.'],
+    ]);
+  }
+
+  // ---------------- telemetry table ----------------
+  const TEL = [['t', 'min', v => fmt(v / 60, 2)], ['Xw', 'X true', v => fmt(v, 2)], ['XwHat', 'X EKF ±2σ', null], ['Tp', 'Tp true', v => fmt(v, 1)], ['TpHat', 'Tp EKF ±2σ', null],
+    ['TaMeas', 'Ta meas.', v => fmt(v, 2)], ['RHMeas', 'RH meas.', v => fmt(v, 1)], ['B', 'B true', v => fmt(v, 1)], ['BHat', 'B EKF', v => fmt(v, 1)],
+    ['Tin', 'T in', v => fmt(v, 1)], ['G', 'G', v => fmt(v, 2)], ['Pw', 'kW', v => fmt(v, 0)], ['offspec', 'Status', v => v ? '✕ off-spec' : '✓ ok']];
+  function updateTelemetry() {
+    const t = $('telTable');
+    if (!t.tHead.rows.length) { const tr = t.tHead.insertRow(); TEL.forEach(c => { const th = el('th', '', c[1]); th.scope = 'col'; tr.append(th); }); }
+    const h = sim.lanes[focus].h, n = h.t.length, rows = [];
+    for (let i = n - 1; i >= 0 && rows.length < 10; i -= 6) rows.push(i);
+    const tb = t.tBodies[0];
+    while (tb.rows.length > rows.length) tb.deleteRow(-1);
+    while (tb.rows.length < rows.length) { const tr = tb.insertRow(); TEL.forEach(() => tr.insertCell()); }
+    rows.forEach((i, r) => {
+      const cells = tb.rows[r].cells;
+      TEL.forEach(([k, , f], c) => {
+        let s;
+        if (k === 'XwHat') s = fmt(h.XwHat[i], 2) + ' ± ' + fmt(2 * h.XwSd[i], 2);
+        else if (k === 'TpHat') s = fmt(h.TpHat[i], 1) + ' ± ' + fmt(2 * h.TpSd[i], 1);
+        else s = f(h[k][i]);
+        cells[c].textContent = s;
+        if (k === 'offspec') cells[c].className = h[k][i] ? 'bad' : '';
+      });
+    });
+    $('telSub').textContent = 'Inspected loop: ' + LANE_NAME[focus] + '. Every 30 s, newest first; this is the table view of the charts above.';
+  }
+  function exportCSV() {
+    const keys = ['Xw', 'XwHat', 'XwSd', 'Tp', 'TpHat', 'TpSd', 'Ta', 'TaMeas', 'RH', 'RHMeas', 'B', 'BHat', 'BSd', 'Xin', 'XinHat', 'Tin', 'G', 'Pw', 'offspec'];
+    const head = ['t_s', 'Tamb_C', 'RHamb_pct', 'throughput_kg_h'];
+    LANES.forEach(l => keys.forEach(k => head.push(l + '_' + k)));
+    const lines = [head.join(',')], S = sim.shared, n = S.t.length;
+    for (let i = 0; i < n; i++) {
+      const row = [S.t[i], S.Tamb[i].toFixed(3), S.RHamb[i].toFixed(3), S.Fs[i].toFixed(1)];
+      LANES.forEach(l => { const h = sim.lanes[l].h, j = h.t.length - n + i; keys.forEach(k => row.push(j >= 0 ? (+h[k][j]).toFixed(5) : '')); });
+      lines.push(row.join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'food-dryer-twin-telemetry.csv';
+    document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  // ---------------- disturbance panel ----------------
+  const distBtns = {};
+  function buildDisturbances() {
+    const g = $('distGrid');
+    for (const k of Object.keys(EVENT_TYPES)) {
+      const b = el('button', 'dbtn'); b.type = 'button';
+      b.append(el('span', 'n', EVENT_TYPES[k].label), el('span', 'd', EVENT_TYPES[k].desc), el('span', 'bar'));
+      b.addEventListener('click', () => { sim.dist.inject(k, sim.t); requestDraw(); updateDistButtons(); });
+      g.append(b); distBtns[k] = b;
+    }
+    const b = el('button', 'dbtn'); b.type = 'button';
+    b.append(el('span', 'n', 'Compound upset'), el('span', 'd', 'wet-feed slug + humidity spike at once'), el('span', 'bar'));
+    b.addEventListener('click', () => { sim.dist.inject('wet', sim.t); sim.dist.inject('humid', sim.t); requestDraw(); updateDistButtons(); });
+    g.append(b); distBtns.combo = b;
+  }
+  function updateDistButtons() {
+    for (const k in distBtns) {
+      const evs = k === 'combo'
+        ? sim.dist.events.filter(e => e.type === 'wet' && sim.t >= e.start && sim.t < e.end && sim.dist.events.some(h => h.type === 'humid' && h.start === e.start))
+        : sim.dist.events.filter(e => e.type === k && sim.t >= e.start && sim.t < e.end);
+      const b = distBtns[k];
+      if (evs.length) { const e = evs[evs.length - 1]; b.classList.add('on'); b.querySelector('.bar').style.width = (100 * (e.end - sim.t) / (e.end - e.start)).toFixed(1) + '%'; b.setAttribute('aria-pressed', 'true'); }
+      else { b.classList.remove('on'); b.querySelector('.bar').style.width = '0'; b.setAttribute('aria-pressed', 'false'); }
+    }
+  }
+
+  // ---------------- tuning controls ----------------
+  const TUNE = [
+    { id: 'sp', label: 'Moisture set-point', unit: '% w.b.', min: 7, max: 11, step: 0.1, d: 1, apply: v => { sim.cfg.sp = v; sim.setGfix(sim.cfg.Gfix); } },
+    { id: 'tol', label: 'Moisture spec tolerance (±)', unit: '% w.b.', min: 0.4, max: 2, step: 0.1, d: 1 },
+    { id: 'Tmax', label: 'Max product temperature (hard constraint)', unit: '°C', min: 52, max: 70, step: 0.5, d: 1 },
+    { id: 'Bmax', label: 'Browning limit B max', unit: 'BI', min: 15, max: 40, step: 1, d: 0 },
+    { id: 'wE', label: 'MPC energy weight w E', unit: '', min: 0, max: 3, step: 0.1, d: 1 },
+    { id: 'backoff', label: 'MPC constraint back-off δ', unit: '°C', min: 0, max: 3, step: 0.1, d: 1 },
+    { id: 'wDu', label: 'MPC move suppression w Δu', unit: '', min: 0.2, max: 8, step: 0.2, d: 1 },
+    { id: 'Kp', label: 'PID gain K p', unit: '°C per %', min: 2, max: 25, step: 0.5, d: 1 },
+    { id: 'Ti', label: 'PID integral time T i', unit: 's', min: 60, max: 900, step: 10, d: 0 },
+    { id: 'Td', label: 'PID derivative time T d', unit: 's', min: 0, max: 120, step: 5, d: 0 },
+    { id: 'Gfix', label: 'Fixed airflow for open-loop & PID', unit: 'kg/s', min: 2.5, max: 8, step: 0.1, d: 1, apply: v => sim.setGfix(v), extra: () => 'recipe T in ' + fmt(sim.cfg.TinOL, 1) + ' °C' },
+  ];
+  function buildTuning() {
+    const box = $('tuneRows');
+    for (const t of TUNE) {
+      const row = el('div', 'ctrl'), lab = el('label', '', t.label), out = el('output'), inp = el('input');
+      lab.htmlFor = 'tune_' + t.id; inp.id = 'tune_' + t.id; inp.type = 'range'; inp.min = t.min; inp.max = t.max; inp.step = t.step;
+      inp.value = sim.cfg[t.id];
+      const show = () => { out.textContent = fmt(+inp.value, t.d) + (t.unit ? ' ' + t.unit : '') + (t.extra ? ' · ' + t.extra() : ''); };
+      inp.addEventListener('input', () => { const v = +inp.value; if (t.apply) t.apply(v); else sim.cfg[t.id] = v; show(); requestDraw(); });
+      t.sync = () => { inp.value = sim.cfg[t.id]; show(); };
+      show(); row.append(lab, out, inp); box.append(row);
+    }
+  }
+
+  // ---------------- controls ----------------
+  function setFocus(l) {
+    focus = l;
+    $('segFocus').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lane === l)));
+    $('ekfHead').textContent = 'EKF soft sensor · ' + LANE_NAME[l] + ' loop';
+    $('ekfSub').textContent = 'Hidden states estimated from exhaust-air temperature and RH only. Shaded band = ±2σ from the EKF covariance. Dashed = ' + (l === 'mpc' ? 'the MPC\'s optimal predicted trajectory.' : 'model forecast from the EKF state with the current inputs held.');
+    requestDraw(); slowUpdate();
+  }
+  function bindControls() {
+    $('segFocus').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setFocus(b.dataset.lane); });
+    $('segWin').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; winMin = +b.dataset.win; $('segWin').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); requestDraw(); });
+    $('btnRun').addEventListener('click', () => { running = !running; $('btnRun').textContent = running ? 'Pause' : 'Run'; $('btnRun').setAttribute('aria-pressed', String(running)); });
+    $('btnStep').addEventListener('click', () => { for (let i = 0; i < 60 / TS; i++) stepOnce(); requestDraw(); slowUpdate(); });
+    $('btnReset').addEventListener('click', () => {
+      seed = (Math.random() * 2 ** 31) >>> 0;
+      const keep = Object.assign({}, sim.cfg), d = sim.dist;
+      sim = new Simulator(seed, keep);
+      sim.dist.stochFeed = d.stochFeed; sim.dist.weather = d.weather; sim.dist.noiseScale = d.noiseScale;
+      fcCache = { t: -1, lane: null, f: null }; tCache.clear(); hoverT = null; beltPos = 0;
+      requestDraw(); slowUpdate();
+    });
+    $('selSpeed').addEventListener('change', e => { speed = e.target.value === 'max' ? 'max' : +e.target.value; });
+    $('btnKpiReset').addEventListener('click', () => { sim.resetKPI(); slowUpdate(); });
+    $('btnCsv').addEventListener('click', exportCSV);
+    $('chkFeed').addEventListener('change', e => { sim.dist.stochFeed = e.target.checked; });
+    $('chkWeather').addEventListener('change', e => { sim.dist.weather = e.target.checked; });
+    $('rngNoise').addEventListener('input', e => { sim.dist.noiseScale = +e.target.value; $('outNoise').textContent = fmt(+e.target.value, 1) + '×'; });
+    $('rngMis').addEventListener('input', e => { sim.setMismatch(+e.target.value / 100); $('outMis').textContent = e.target.value + ' %'; });
+    $('btnTheme').addEventListener('click', () => {
+      const root = document.documentElement, cur = root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      root.dataset.theme = cur === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem('fdt-theme', root.dataset.theme); } catch (e) { /* storage unavailable */ }
+      readColors(); for (const c of charts) c.legendKey = ''; requestDraw();
+    });
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); for (const c of charts) c.legendKey = ''; requestDraw(); });
+    window.addEventListener('resize', requestDraw);
+  }
+
+  // ---------------- main loop ----------------
+  function stepOnce() {
+    sim.step();
+    const d = sim.d;
+    beltPos += (d.Fs / NOMINAL.Fs) * 0.58 * TS;
+    fanAngle = (fanAngle + sim.lanes[focus].u[1] * 9) % 360;
+  }
+  function render() {
+    const now = sim.t, win = winMin * 60, horizon = MPC_N * FC_DT;
+    const V = { t0: Math.max(0, now - win), t1: Math.max(win, now) + horizon, now, win: winMin, horizon, events: sim.dist.events };
+    if (now < win) { V.t0 = 0; V.t1 = win + horizon; }
+    for (const c of charts) c.draw(V);
+    updateSchematic();
+    $('clock').textContent = '';
+    $('clock').append('t = ', el('b', '', fmt(now / 60, 1) + ' min'), ' · ' + (running ? (speed === 'max' ? 'max speed' : speed + ' sim-min/s') : 'paused') + ' · seed ' + seed);
+  }
+  function slowUpdate() { updateKPIs(); updateStats(); updateDiag(); updateTelemetry(); updateDistButtons(); }
+  let last = performance.now(), debt = 0, lastSlow = 0, lastChart = 0;
+  function frame(ts) {
+    const dt = Math.min(0.25, (ts - last) / 1000); last = ts;
+    if (running) {
+      const t0 = performance.now();
+      if (speed === 'max') { while (performance.now() - t0 < 14) stepOnce(); }
+      else { debt += dt * speed * 60 / TS; while (debt >= 1 && performance.now() - t0 < 14) { stepOnce(); debt -= 1; } debt = Math.min(debt, 4); }
+      dirty = true;
+    }
+    if (dirty && ts - lastChart > 30) { render(); dirty = false; lastChart = ts; }
+    if (ts - lastSlow > 400) { slowUpdate(); lastSlow = ts; }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------------- boot ----------------
+  try { const th = localStorage.getItem('fdt-theme'); if (th === 'light' || th === 'dark') document.documentElement.dataset.theme = th; } catch (e) { /* storage unavailable */ }
+  readColors();
+  buildSchematic(); buildDisturbances(); buildTuning(); buildCharts(); bindControls();
+  setFocus('mpc');
+  for (let i = 0; i < 6; i++) stepOnce();   // a few samples so the first frame has data
+  render(); slowUpdate();
+  requestAnimationFrame(frame);
+  window.__twin = () => sim;   // handy for console experiments
+})();
+/* ==== UI END ==== */
+
+</script>
+</body>
+</html>
